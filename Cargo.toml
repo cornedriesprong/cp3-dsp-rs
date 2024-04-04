@@ -1,0 +1,12 @@
+[package]
+name = "cp3-dsp"
+version = "0.1.0"
+edition = "2021"
+authors = ["Corné Driesprong <corne@cp3.io>"]
+description = "DSP library"
+
+[dependencies]
+rusty_link = "0.4.2"
+rand = "0.8.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
