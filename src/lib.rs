@@ -5,6 +5,7 @@ pub mod drums;
 pub mod envelopes;
 pub mod filters;
 pub mod karplus;
+pub mod limiter;
 pub mod oscillators;
 pub mod sequencer;
 pub mod synth;

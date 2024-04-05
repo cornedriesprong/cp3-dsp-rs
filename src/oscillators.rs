@@ -6,7 +6,7 @@ use rand::prelude::*;
 
 /*
     Bandlimited Impulse Train (BLIT) Sawtooth Oscillator
-    Implementation based on the example in the book "Creating Synthesizer Plug-Ins with C++ and JUCE" by Matthijs Hollemans
+    Implementation based on an example from the book "Creating Synthesizer Plug-Ins with C++ and JUCE" by Matthijs Hollemans
 */
 pub struct BlitSawOsc {
     period: f32,
@@ -111,7 +111,7 @@ pub struct Osc {
     waveform: Waveform,
     phase: f32,
     increment: f32,
-    rng: rand::rngs::ThreadRng,
+    // rng: rand::rngs::ThreadRng,
 }
 
 impl Osc {
@@ -120,13 +120,13 @@ impl Osc {
             waveform,
             phase: 0.0,
             increment: A4_FREQ / SAMPLE_RATE, // default to 440 Hz
-            rng: rand::thread_rng(),
+                                              // rng: rand::thread_rng(),
         }
     }
 
     #[inline]
     pub fn process(&mut self) -> f32 {
-        let output = self.generate_waveform(&self.waveform, self.phase);
+        let output = self.generate_waveform();
         self.phase += self.increment;
 
         if self.phase >= 2.0 * PI {
@@ -140,20 +140,21 @@ impl Osc {
         self.increment = freq / SAMPLE_RATE;
     }
 
-    fn generate_waveform(&self, waveform: &Waveform, phase: f32) -> f32 {
+    fn generate_waveform(&mut self) -> f32 {
         // TODO: bandlimit waveforms
         // TODO: implement noise
-        match waveform {
-            Waveform::Sine => phase.sin(),
-            Waveform::Saw => phase * 2.0 - 1.0,
+        match self.waveform {
+            Waveform::Sine => self.phase.sin(),
+            Waveform::Saw => self.phase * 2.0 - 1.0,
             Waveform::Square => {
-                if phase < 0.5 {
+                if self.phase < 0.5 {
                     -1.0
                 } else {
                     1.0
                 }
             }
-            Waveform::Noise => self.rng.gen::<f32>() * 2.0 - 1.0,
+            Waveform::Noise => 0.0,
+            // } // Waveform::Noise => self.rng.gen::<f32>() * 2.0 - 1.0,
         }
     }
 }
@@ -163,11 +164,45 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_creates_oscillator() {
+    fn create_osc() {
         let rate = 440.0;
         let osc = Osc::new(Waveform::Sine);
 
         assert_eq!(osc.phase, 0.0);
         assert_eq!(osc.increment, rate / SAMPLE_RATE);
+    }
+
+    #[test]
+    fn generate_waveform() {
+        let mut osc = Osc::new(Waveform::Sine);
+        let output = osc.process();
+
+        assert!(output >= -1.0 && output <= 1.0);
+    }
+
+    #[test]
+    fn create_blit_osc() {
+        let osc = BlitSawOsc::new();
+        assert_eq!(osc.period, 0.0);
+        assert_eq!(osc.amplitude, 1.0);
+        assert_eq!(osc.phase, 0.0);
+        assert_eq!(osc.phase_max, 0.0);
+        assert_eq!(osc.inc, 0.0);
+        assert_eq!(osc.sin0, 0.0);
+        assert_eq!(osc.sin1, 0.0);
+        assert_eq!(osc.dsin, 0.0);
+        assert_eq!(osc.dc, 0.0);
+        assert_eq!(osc.saw, 0.0);
+    }
+
+    #[test]
+    fn blit_generate_waveform() {
+        let mut osc = BlitSawOsc::new();
+        osc.set_freq(440.0);
+        // generate 1st 100 samples
+        for _ in 0..100 {
+            let output = osc.process();
+            assert!(output >= -1.0 && output <= 1.0);
+        }
     }
 }

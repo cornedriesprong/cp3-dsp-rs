@@ -1,5 +1,5 @@
 use crate::envelopes::{CurveType, AR};
-use crate::filters::SVF;
+use crate::filters::{OnePoleLPF, SVF};
 use crate::karplus::KarplusVoice;
 use crate::oscillators::{BlitSawOsc, Osc, Waveform};
 use crate::utils::{lin_to_log, pitch_to_freq, xerp};
@@ -11,7 +11,8 @@ pub struct Voice {
     osc: BlitSawOsc,
     env: AR,
     velocity: f32,
-    filter: SVF,
+    // filter: SVF,
+    filter: OnePoleLPF,
     lfo: Osc,
 }
 
@@ -21,19 +22,25 @@ impl Voice {
             osc: BlitSawOsc::new(),
             env: AR::new(0.0, 30000.0, CurveType::Exponential { pow: 8 }),
             velocity: 1.0,
-            filter: SVF::new(),
+            // filter: SVF::new(),
+            filter: OnePoleLPF::new(0.5),
             lfo: Osc::new(Waveform::Sine),
         }
     }
 
     pub fn init(&mut self) {
-        self.set_filter_freq(1000.0);
+        self.set_filter_freq(5000.0);
         self.set_filter_q(0.707);
     }
 
     #[inline]
     pub fn process(&mut self) -> f32 {
-        let y = self.osc.process() * self.env.process() * self.velocity;
+        if !self.env.is_active() {
+            return 0.0;
+        }
+        // let y = self.osc.process() * self.env.process() * self.velocity;
+        let y = self.osc.process();
+        // y
         self.filter.process(y)
     }
 
@@ -59,17 +66,17 @@ impl Voice {
     }
 
     pub fn set_filter_q(&mut self, q: f32) {
-        self.filter.set_q(q);
+        // self.filter.set_q(q);
     }
 
     pub fn is_active(&self) -> bool {
-        // self.env.is_active()
-        true
+        self.env.is_active()
     }
 }
 
 pub struct Synth {
-    voices: Vec<KarplusVoice>,
+    // voices: Vec<KarplusVoice>,
+    voices: Vec<Voice>,
     current_voice_index: usize,
 }
 
@@ -77,8 +84,9 @@ impl Synth {
     pub fn new() -> Self {
         let mut voices = Vec::new();
         for _ in 0..VOICE_COUNT {
-            let mut voice = KarplusVoice::new(SAMPLE_RATE as f32);
-            // voice.init();
+            // let mut voice = KarplusVoice::new(SAMPLE_RATE as f32);
+            let mut voice = Voice::new();
+            voice.init();
             voices.push(voice);
         }
 
@@ -88,19 +96,25 @@ impl Synth {
         }
     }
 
-    pub fn note_on(&mut self, pitch: u8, velocity: u8, freq: Option<f32>, q: Option<f32>) {
+    pub fn play(&mut self, pitch: u8, velocity: u8) {
         let voice = &mut self.voices[self.current_voice_index];
         voice.play(pitch, velocity);
-        if let Some(freq) = freq {
-            let freq = xerp(freq, 1.0, 2);
-            let freq = freq * (SAMPLE_RATE / 2.0 as f32);
-            // voice.set_filter_freq(freq);
-        }
-        if let Some(q) = q {
-            let q = lin_to_log(q, 0.0, 1.0, 0.5, 25.0);
-            // voice.set_filter_q(q);
-        }
+        // if let Some(freq) = freq {
+        //     let freq = xerp(freq, 1.0, 2);
+        //     let freq = freq * (SAMPLE_RATE / 2.0 as f32);
+        //     // voice.set_filter_freq(freq);
+        // }
+        // if let Some(q) = q {
+        //     let q = lin_to_log(q, 0.0, 1.0, 0.5, 25.0);
+        //     // voice.set_filter_q(q);
+        // }
         self.current_voice_index = (self.current_voice_index + 1) % VOICE_COUNT;
+    }
+
+    pub fn stop(&mut self, pitch: u8) {
+        for voice in self.voices.iter_mut() {
+            // voice.stop(pitch);
+        }
     }
 
     #[inline]

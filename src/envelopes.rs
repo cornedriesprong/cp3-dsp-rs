@@ -34,7 +34,7 @@ impl AR {
             delta: 0.0,
             time: 0.0,
             velocity: 1.0,
-            state: EnvelopeState::Release,
+            state: EnvelopeState::Off,
             curve_type,
         };
 
@@ -93,6 +93,14 @@ impl AR {
         match self.curve_type {
             CurveType::Linear => 1.0 - lerp(self.time, length),
             CurveType::Exponential { pow } => xerp(length - self.time, length, pow),
+        }
+    }
+
+    pub fn is_active(&self) -> bool {
+        match self.state {
+            EnvelopeState::Attack => true,
+            EnvelopeState::Release => true,
+            _ => false,
         }
     }
 }
@@ -159,5 +167,22 @@ mod tests {
         matches!(ar.state, EnvelopeState::Release);
         assert_eq!(ar.process(), 1.0);
         assert_eq!(ar.process(), 0.991684);
+    }
+
+    #[test]
+    fn test_is_active() {
+        let attack = 1.0;
+        let release = 1.0;
+        let mut ar = AR::new(attack, release, CurveType::Exponential { pow: 2 });
+        assert_eq!(ar.is_active(), false);
+
+        ar.trigger(127);
+        assert_eq!(ar.is_active(), true);
+
+        for _ in 0..100 {
+            // ring out note
+            ar.process();
+        }
+        assert_eq!(ar.is_active(), false);
     }
 }

@@ -19,8 +19,8 @@ impl Limiter {
     }
 
     #[inline]
-    pub fn tick(&mut self, input: f32) -> f32 {
-        self.env_follower.tick(input);
+    pub fn process(&mut self, input: f32) -> f32 {
+        self.env_follower.process(input);
         if self.env_follower.env > self.threshold {
             input / self.env_follower.env
         } else {
@@ -46,7 +46,7 @@ impl EnvelopeFollower {
     }
 
     #[inline]
-    pub fn tick(&mut self, input: f32) {
+    pub fn process(&mut self, input: f32) {
         let v = input.abs();
         if v > self.env {
             self.env = self.attack * (self.env - v) + v
@@ -78,12 +78,12 @@ mod tests {
         let mut limiter = Limiter::new(attack, release, threshold);
 
         // should limit value
-        assert_eq!(limiter.tick(1.0), 1.0);
-        assert_eq!(limiter.tick(1.0), 1.0);
-        assert_eq!(limiter.tick(1.0), 1.0);
-        assert_eq!(limiter.tick(1.0), 1.0);
-        assert_eq!(limiter.tick(1.0), 1.0);
-        assert_eq!(limiter.tick(1.0), 1.0);
+        assert_eq!(limiter.process(1.0), 1.0);
+        assert_eq!(limiter.process(1.0), 1.0);
+        assert_eq!(limiter.process(1.0), 1.0);
+        assert_eq!(limiter.process(1.0), 1.0);
+        assert_eq!(limiter.process(1.0), 1.0);
+        assert_eq!(limiter.process(1.0), 1.0);
     }
 
     #[test]
