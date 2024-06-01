@@ -1,8 +1,6 @@
-use crate::utils::A4_FREQ;
-use crate::SAMPLE_RATE;
+use crate::consts::{A4_FREQ, SAMPLE_RATE};
 use std::f32::consts::{FRAC_PI_4, PI};
 extern crate rand;
-use rand::prelude::*;
 
 /*
     Bandlimited Impulse Train (BLIT) Sawtooth Oscillator
@@ -59,7 +57,7 @@ impl BlitSawOsc {
     }
 
     fn next_sample(&mut self) -> f32 {
-        let mut y = 0.0;
+        let y;
         self.phase += self.inc;
 
         if self.phase <= FRAC_PI_4 {
@@ -162,6 +160,7 @@ impl Osc {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plot::plot_graph;
 
     #[test]
     fn create_osc() {
@@ -204,5 +203,43 @@ mod tests {
             let output = osc.process();
             assert!(output >= -1.0 && output <= 1.0);
         }
+    }
+
+    #[test]
+    fn blit_reset() {
+        let mut osc = BlitSawOsc::new();
+        osc.set_freq(440.0);
+        osc.process();
+        osc.reset();
+        assert_eq!(osc.inc, 0.0);
+        assert_eq!(osc.phase, 0.0);
+        assert_eq!(osc.sin0, 0.0);
+        assert_eq!(osc.sin1, 0.0);
+        assert_eq!(osc.dsin, 0.0);
+        assert_eq!(osc.dc, 0.0);
+        assert_eq!(osc.saw, 0.0);
+    }
+
+    #[test]
+    fn blit_set_freq() {
+        let mut osc = BlitSawOsc::new();
+        osc.set_freq(440.0);
+        assert_eq!(osc.period, SAMPLE_RATE / 440.0);
+    }
+
+    #[test]
+    fn plot_blit_saw() {
+        let mut osc = BlitSawOsc::new();
+        osc.set_freq(440.0);
+        let mut xs = Vec::new();
+        let mut ys = Vec::new();
+        let mut i = 0.0;
+        for _ in 0..4000 {
+            xs.push(i);
+            ys.push(osc.process());
+            i += 1.0;
+        }
+        // ys.iter().for_each(|y| println!("{}", y));
+        plot_graph(&xs, &ys, "blit_saw.png");
     }
 }

@@ -1,12 +1,13 @@
-pub const SAMPLE_RATE: f32 = 48000.0;
-
+pub mod consts;
 pub mod delay;
 pub mod drums;
 pub mod envelopes;
 pub mod filters;
 pub mod karplus;
 pub mod limiter;
-pub mod oscillators;
+pub mod osc;
+pub mod plot;
+pub mod reverb;
 pub mod sequencer;
 pub mod synth;
 pub mod utils;

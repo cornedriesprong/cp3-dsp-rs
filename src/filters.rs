@@ -1,6 +1,7 @@
 //! Various types of filters
 
-use crate::SAMPLE_RATE;
+use crate::consts::SAMPLE_RATE;
+use crate::delay::{DelayLine, InterpolationType};
 use std::f32::consts::PI;
 
 /// # 1st order FIR Filter
@@ -25,6 +26,8 @@ use std::f32::consts::PI;
 ///  **Difference equation:**
 ///  `y[n] = a0 * x[n] + a1 * x[n-1]`
 ///
+/// TODO: generalize to Nth order
+///
 pub struct FIRFilter {
     a0: f32, // a0 coefficient
     a1: f32, // a1 coefficient
@@ -37,7 +40,7 @@ impl FIRFilter {
     }
 
     #[inline]
-    pub fn process(&mut self, x: f32) -> f32 {
+    fn process(&mut self, x: f32) -> f32 {
         let y = (x * self.a0) + (self.z * self.a1);
         self.z = x; // store the current sample in the delay register
         y
@@ -72,6 +75,7 @@ impl OnePoleLPF {
 }
 
 /// Cytomic (Andrew Simper) state-variable filter
+#[derive(Clone)]
 pub struct SVF {
     g: f32,
     k: f32,
@@ -83,8 +87,8 @@ pub struct SVF {
 }
 
 impl SVF {
-    pub fn new() -> SVF {
-        SVF {
+    pub fn new(freq: f32, q: f32) -> SVF {
+        let mut svf = SVF {
             g: 0.0,
             k: 0.0,
             a1: 0.0,
@@ -92,7 +96,10 @@ impl SVF {
             a3: 0.0,
             ic1eq: 0.0,
             ic2eq: 0.0,
-        }
+        };
+        svf.set_frequency(freq);
+        svf.set_q(q);
+        svf
     }
 
     #[inline]
@@ -133,19 +140,42 @@ impl SVF {
     }
 }
 
+/// Schroeder all-pass filter
+pub struct AllPass {
+    delay_line: DelayLine,
+    feedback: f32,
+}
+
+impl AllPass {
+    pub fn new(length: usize) -> Self {
+        return Self {
+            delay_line: DelayLine::new(InterpolationType::Linear, length),
+            feedback: 0.5,
+        };
+    }
+
+    #[inline]
+    pub fn process(&mut self, x: f32) -> f32 {
+        let delayed = self.delay_line.read(None);
+        let y = -x + delayed;
+        self.delay_line
+            .write_and_increment(x + (delayed * self.feedback));
+        y
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use plotters::prelude::*;
+    use super::*;
+    use crate::consts::{
+        DC_SIGNAL, HALF_NYQUIST_SIGNAL, IMPULSE_SIGNAL, NYQUIST_SIGNAL, QUARTER_NYQUIST_SIGNAL,
+    };
+    use crate::plot::plot_graph;
     use rustfft::algorithm::Radix4;
     use rustfft::num_complex::Complex;
     use rustfft::num_traits::Zero;
     use rustfft::Fft;
     use rustfft::FftDirection::Forward;
-
-    use super::*;
-    use crate::utils::{
-        DC_SIGNAL, HALF_NYQUIST_SIGNAL, IMPULSE_SIGNAL, NYQUIST_SIGNAL, QUARTER_NYQUIST_SIGNAL,
-    };
 
     // FIR filter coefficients
     const A0: f32 = 0.5;
@@ -228,9 +258,6 @@ mod tests {
         assert_eq!(ir, vec![A0, A1, 0.0, 0.0, 0.0, 0.0, 0.0]);
     }
 
-    // TODO: use FFT to plot and validate frequency and
-    // phase responses from the impulse response
-
     #[test]
     // test frequency response
     fn fir_filter_frequency_response() {
@@ -240,7 +267,7 @@ mod tests {
             .map(|&x| lpf.process(x))
             .collect::<Vec<f32>>();
 
-        // perform FFT
+        // perform FFT to get frequency and response from impulse response
         let fft_size = (SAMPLE_RATE as usize).next_power_of_two();
         let fft = Radix4::new(fft_size, Forward);
         let mut buffer: Vec<Complex<f32>> = ir.iter().map(|&x| Complex::new(x, 0.0)).collect();
@@ -260,6 +287,7 @@ mod tests {
             })
             .collect();
 
+        // imaginary numbers to phase
         let phases: Vec<f32> = buffer
             .iter()
             .map(|&x| x.arg())
@@ -275,22 +303,7 @@ mod tests {
             .0
             .to_vec();
 
-        // plot frequency response
-        let root = BitMapBackend::new("frequency_response.png", (640, 480)).into_drawing_area();
-        root.fill(&WHITE).unwrap();
-        let mut chart = ChartBuilder::on(&root)
-            .margin(5)
-            .x_label_area_size(30)
-            .y_label_area_size(30)
-            .build_cartesian_2d(0f32..0.5f32, -60f32..0f32)
-            .unwrap();
-        chart.configure_mesh().draw().unwrap();
-
-        chart
-            .draw_series(LineSeries::new(
-                bins.iter().zip(dbs.iter()).map(|(&x, &y)| (x, y)),
-                &BLUE,
-            ))
-            .unwrap();
+        plot_graph(&bins, &dbs, "fir_freq_response.png");
+        plot_graph(&bins, &phases, "fir_phase_response.png");
     }
 }

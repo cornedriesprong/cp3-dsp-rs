@@ -1,5 +1,5 @@
+use crate::consts::SAMPLE_RATE;
 use crate::utils::{lerp, xerp};
-use crate::SAMPLE_RATE;
 
 pub enum EnvelopeState {
     Attack,
@@ -44,6 +44,11 @@ impl AR {
     pub fn trigger(&mut self, velocity: u8) {
         self.velocity = velocity as f32 / 127.0;
         self.state = EnvelopeState::Attack;
+    }
+
+    pub fn release(&mut self) {
+        // TODO: trigger release
+        self.state = EnvelopeState::Off;
     }
 
     #[inline]
@@ -180,7 +185,7 @@ mod tests {
         assert_eq!(ar.is_active(), true);
 
         for _ in 0..100 {
-            // ring out note
+            // play envelope
             ar.process();
         }
         assert_eq!(ar.is_active(), false);

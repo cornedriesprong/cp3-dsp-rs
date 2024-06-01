@@ -160,7 +160,6 @@ impl<T: LinkTrait> Sequencer<T> {
     }
 
     pub fn load_sequence(&mut self, sequence: Sequence) {
-        println!("received new sequence...");
         self.sequence = sequence;
     }
 

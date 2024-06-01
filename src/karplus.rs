@@ -1,3 +1,5 @@
+use crate::consts::SAMPLE_RATE;
+use crate::synth::SynthVoice;
 use crate::utils::{freq_to_period, pitch_to_freq};
 use rand::Rng;
 
@@ -19,11 +21,23 @@ pub struct KarplusVoice {
     read_pos: usize,
     pitch_track: f32,
     is_stopped: bool,
-    sample_rate: f32,
 }
 
 impl KarplusVoice {
-    pub fn new(sample_rate: f32) -> Self {
+    fn generate_triangle_wave(sample: i32, period: f32) -> f32 {
+        let phase = sample as f32 / period;
+        if phase < 0.25 {
+            4.0 * phase
+        } else if phase < 0.75 {
+            2.0 - 4.0 * phase
+        } else {
+            -4.0 + 4.0 * phase
+        }
+    }
+}
+
+impl SynthVoice for KarplusVoice {
+    fn new() -> Self {
         Self {
             // mode: Mode::String,
             tone: 0.5,
@@ -33,18 +47,17 @@ impl KarplusVoice {
             read_pos: 0,
             pitch_track: 0.0,
             is_stopped: true,
-            sample_rate,
         }
     }
 
-    pub fn reset(&mut self) {
+    fn reset(&mut self) {
         self.period = 0.0;
         self.read_pos = 0;
         self.pitch_track = 0.0;
     }
 
     #[inline]
-    pub fn process(&mut self) -> f32 {
+    fn process(&mut self) -> f32 {
         if !self.is_active() {
             return 0.0;
         }
@@ -73,10 +86,13 @@ impl KarplusVoice {
         self.buffer[self.read_pos]
     }
 
-    pub fn play(&mut self, pitch: u8, velocity: u8) {
+    fn play(&mut self, pitch: u8, velocity: u8, param1: f32, param2: f32) {
+        self.tone = param1;
+        self.damping = param2;
+
         self.is_stopped = false;
         let freq = pitch_to_freq(pitch);
-        self.period = freq_to_period(self.sample_rate, freq);
+        self.period = freq_to_period(SAMPLE_RATE, freq);
         self.read_pos = 0;
 
         self.pitch_track = (5.0 as f32).max(self.period / 7.0);
@@ -100,22 +116,15 @@ impl KarplusVoice {
         }
     }
 
-    pub fn stop(&mut self) {
+    fn stop(&mut self) {
         self.is_stopped = true;
     }
 
-    pub fn is_active(&self) -> bool {
-        self.period > 0.0
+    fn get_pitch(&self) -> u8 {
+        (self.period * 27.5) as u8
     }
 
-    fn generate_triangle_wave(sample: i32, period: f32) -> f32 {
-        let phase = sample as f32 / period;
-        if phase < 0.25 {
-            4.0 * phase
-        } else if phase < 0.75 {
-            2.0 - 4.0 * phase
-        } else {
-            -4.0 + 4.0 * phase
-        }
+    fn is_active(&self) -> bool {
+        self.period > 0.0
     }
 }

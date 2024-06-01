@@ -1,5 +1,5 @@
 use crate::envelopes::{CurveType, AR};
-use crate::oscillators::{Osc, Waveform};
+use crate::osc::{Osc, Waveform};
 
 pub struct Kick {
     pitch_hz: f32,

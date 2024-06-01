@@ -1,16 +1,6 @@
-// TODO: put constants in a separate file or module
-pub const A4_FREQ: f32 = 440.0;
-pub const A4_MIDI: u8 = 69;
+//! Utility functions
+use crate::consts::{A4_FREQ, A4_MIDI};
 
-/// test signals
-pub const DC_SIGNAL: [f32; 7] = [0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
-pub const NYQUIST_SIGNAL: [f32; 7] = [1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0];
-pub const HALF_NYQUIST_SIGNAL: [f32; 7] = [0.0, 1.0, 0.0, -1.0, 0.0, 1.0, 0.0];
-pub const QUARTER_NYQUIST_SIGNAL: [f32; 9] =
-    [0.0, 0.707, 1.0, 0.707, 0.0, -0.707, -1.0, -0.707, 0.0];
-pub const IMPULSE_SIGNAL: [f32; 7] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-
-/// utility functions
 pub fn pitch_to_freq(pitch: u8) -> f32 {
     A4_FREQ * (2f32).powf((pitch as f32 - A4_MIDI as f32) as f32 / 12.0)
 }

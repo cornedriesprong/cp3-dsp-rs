@@ -1,4 +1,4 @@
-use crate::SAMPLE_RATE;
+use crate::consts::SAMPLE_RATE;
 
 /*
   adapted from https://www.musicdsp.org/en/latest/Filters/265-output-limiter-using-envelope-follower-in-c.html

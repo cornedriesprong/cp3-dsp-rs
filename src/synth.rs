@@ -1,9 +1,9 @@
+use crate::consts::SAMPLE_RATE;
 use crate::envelopes::{CurveType, AR};
-use crate::filters::{OnePoleLPF, SVF};
-use crate::karplus::KarplusVoice;
-use crate::oscillators::{BlitSawOsc, Osc, Waveform};
+use crate::filters::SVF;
+use crate::osc::{BlitSawOsc, Osc, Waveform};
+use crate::reverb::Reverb;
 use crate::utils::{lin_to_log, pitch_to_freq, xerp};
-use crate::SAMPLE_RATE;
 
 pub const VOICE_COUNT: usize = 8;
 
@@ -11,124 +11,127 @@ pub struct Voice {
     osc: BlitSawOsc,
     env: AR,
     velocity: f32,
-    // filter: SVF,
-    filter: OnePoleLPF,
+    filter: SVF,
     lfo: Osc,
+    pitch: Option<u8>,
 }
 
-impl Voice {
-    pub fn new() -> Self {
+impl SynthVoice for Voice {
+    fn new() -> Self {
         Self {
             osc: BlitSawOsc::new(),
             env: AR::new(0.0, 30000.0, CurveType::Exponential { pow: 8 }),
             velocity: 1.0,
-            // filter: SVF::new(),
-            filter: OnePoleLPF::new(0.5),
+            filter: SVF::new(5000.0, 0.707),
             lfo: Osc::new(Waveform::Sine),
+            pitch: None,
         }
     }
 
-    pub fn init(&mut self) {
-        self.set_filter_freq(5000.0);
-        self.set_filter_q(0.707);
-    }
-
     #[inline]
-    pub fn process(&mut self) -> f32 {
+    fn process(&mut self) -> f32 {
         if !self.env.is_active() {
             return 0.0;
         }
         // let y = self.osc.process() * self.env.process() * self.velocity;
         let y = self.osc.process();
-        // y
         self.filter.process(y)
     }
 
-    pub fn play(&mut self, pitch: u8, velocity: u8) {
+    fn play(&mut self, pitch: u8, velocity: u8, param1: f32, param2: f32) {
         self.velocity = velocity as f32 / 128.0;
-        self.lfo.set_freq(0.5);
+        self.pitch = Some(pitch);
+        self.filter.set_frequency(param1 * 10000.0);
+        self.filter.set_q(param2 * 20.0);
         let freq = pitch_to_freq(pitch);
         self.osc.reset(); // resetting the phase is optional!
         self.osc.set_freq(freq);
         self.env.trigger(velocity);
     }
 
-    pub fn set_attack(&mut self, attack: f32) {
-        // self.env.set_attack(attack);
+    fn reset(&mut self) {
+        self.env.release();
+        self.osc.reset();
     }
 
-    pub fn set_release(&mut self, release: f32) {
-        // self.env.set_release(release);
+    fn stop(&mut self) {
+        self.env.release();
+        self.pitch = None;
     }
 
-    pub fn set_filter_freq(&mut self, freq: f32) {
-        self.filter.set_frequency(freq);
+    fn get_pitch(&self) -> u8 {
+        self.pitch.unwrap_or(0)
     }
 
-    pub fn set_filter_q(&mut self, q: f32) {
-        // self.filter.set_q(q);
-    }
-
-    pub fn is_active(&self) -> bool {
+    fn is_active(&self) -> bool {
         self.env.is_active()
     }
 }
 
-pub struct Synth {
-    // voices: Vec<KarplusVoice>,
-    voices: Vec<Voice>,
-    current_voice_index: usize,
+pub trait SynthVoice {
+    fn new() -> Self;
+    fn get_pitch(&self) -> u8;
+    fn play(&mut self, pitch: u8, velocity: u8, param1: f32, param2: f32);
+    fn stop(&mut self);
+    fn reset(&mut self);
+    fn is_active(&self) -> bool;
+    fn process(&mut self) -> f32;
 }
 
-impl Synth {
+pub struct Synth<V: SynthVoice> {
+    // voices: Vec<SynthVoice>,
+    voices: Vec<V>,
+    current_voice_index: usize,
+    rev_l: Reverb,
+    rev_r: Reverb,
+    rev_level: f32,
+}
+
+impl<V: SynthVoice> Synth<V> {
     pub fn new() -> Self {
         let mut voices = Vec::new();
         for _ in 0..VOICE_COUNT {
-            // let mut voice = KarplusVoice::new(SAMPLE_RATE as f32);
-            let mut voice = Voice::new();
-            voice.init();
-            voices.push(voice);
+            voices.push(V::new());
         }
 
         Self {
             voices,
             current_voice_index: 0,
+            rev_l: Reverb::new(),
+            rev_r: Reverb::new(),
+            rev_level: 0.5,
         }
     }
 
-    pub fn play(&mut self, pitch: u8, velocity: u8) {
+    pub fn play(&mut self, pitch: u8, velocity: u8, param1: f32, param2: f32) {
+        // println!("playing note at pitch: {}", pitch);
         let voice = &mut self.voices[self.current_voice_index];
-        voice.play(pitch, velocity);
-        // if let Some(freq) = freq {
-        //     let freq = xerp(freq, 1.0, 2);
-        //     let freq = freq * (SAMPLE_RATE / 2.0 as f32);
-        //     // voice.set_filter_freq(freq);
-        // }
-        // if let Some(q) = q {
-        //     let q = lin_to_log(q, 0.0, 1.0, 0.5, 25.0);
-        //     // voice.set_filter_q(q);
-        // }
+        voice.play(pitch, velocity, param1, param2);
         self.current_voice_index = (self.current_voice_index + 1) % VOICE_COUNT;
     }
 
     pub fn stop(&mut self, pitch: u8) {
         for voice in self.voices.iter_mut() {
-            // voice.stop(pitch);
+            if voice.get_pitch() == pitch {
+                // println!("stopping note at pitch: {}", pitch);
+                voice.stop();
+            }
         }
     }
 
     #[inline]
-    pub fn process(&mut self) -> f32 {
-        let mut mix = 0.0;
-        for voice in self.voices.iter_mut() {
-            if voice.is_active() {
-                mix += voice.process();
-            }
-        }
+    pub fn process(&mut self, y1: &mut f32, y2: &mut f32) {
+        // mix down voices
+        let mix = self
+            .voices
+            .iter_mut()
+            .filter(|voice| voice.is_active())
+            .fold(0.0, |acc, voice| acc + voice.process())
+            / VOICE_COUNT as f32;
 
-        mix / (self.voices.len() as f32).sqrt()
-        // limit the output to -1.0 to 1.0
-        // out.max(-1.0).min(1.0)
+        // mix in reverb
+        *y1 = mix + (self.rev_l.process(mix) * self.rev_level);
+        *y2 = mix + (self.rev_r.process(mix) * self.rev_level);
     }
 
     pub fn set_filter_freq(&mut self, value: f32) {
@@ -153,8 +156,7 @@ mod tests {
 
     #[test]
     fn new_creates_synth() {
-        let synth = Synth::new();
-
+        let synth = Synth::<Voice>::new();
         assert_eq!(synth.voices.len(), VOICE_COUNT);
         assert_eq!(synth.current_voice_index, 0);
     }
