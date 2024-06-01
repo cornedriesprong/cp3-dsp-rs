@@ -1,223 +1,171 @@
-use rusty_link::{AblLink, SessionState};
-use serde::Deserialize;
-use std::{collections::HashMap, usize};
+use crate::consts::SAMPLE_RATE;
+use crate::karplus::KarplusVoice;
+use crate::synth::Synth;
+use std::sync::mpsc::Receiver;
 
-pub trait LinkTrait {
-    fn start(&mut self);
-    fn get_beat_time(&mut self) -> f32;
-    fn get_tempo(&mut self) -> f32;
-}
-
-pub struct Link {
-    abl_link: AblLink,
-    state: SessionState,
-    quantum: f64,
-}
-
-impl Link {
-    pub fn new() -> Self {
-        Self {
-            abl_link: AblLink::new(40.),
-            state: SessionState::new(),
-            quantum: 4.,
-        }
-    }
-}
-
-impl LinkTrait for Link {
-    fn start(&mut self) {
-        self.abl_link.enable(true);
-        self.abl_link.capture_audio_session_state(&mut self.state);
-    }
-
-    fn get_beat_time(&mut self) -> f32 {
-        self.state
-            .beat_at_time(self.abl_link.clock_micros(), self.quantum) as f32
-    }
-
-    fn get_tempo(&mut self) -> f32 {
-        self.state.tempo() as f32
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Clone)]
 pub struct Event {
-    pub step: f32,
-    pub pitch: u8,
+    pub beat_time: f32,
+    pub pitch: i8,
+    pub velocity: i8,
+    pub param1: f32,
+    pub param2: f32,
     pub duration: f32,
 }
 
-#[derive(Debug, PartialEq)]
-pub enum Note {
-    On { pitch: u8, velocity: u8 },
-    Off { pitch: u8 },
+pub enum Message {
+    Add(Event),
+    Clear,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct Sequence {
-    events: Vec<Event>,
-    length: i32,
-}
-
-pub struct Sequencer<T: LinkTrait> {
-    link: T,
+pub struct Sequencer {
     sequence: Sequence,
-    playing_notes: Vec<Event>,
-    sample_rate: f32,
+    scheduled_events: Vec<ScheduledEvent>,
+    rx: Receiver<Message>,
+    synth: Synth<KarplusVoice>,
 }
 
-impl<T: LinkTrait> Sequencer<T> {
-    pub fn new(sample_rate: f32, link: T) -> Self {
-        Self {
-            link,
+impl Sequencer {
+    pub fn new(rx: Receiver<Message>) -> Self {
+        Sequencer {
             sequence: Sequence {
                 events: Vec::new(),
-                length: 1,
+                length: 4.,
             },
-            playing_notes: vec![],
-            sample_rate,
+            scheduled_events: Vec::new(),
+            rx,
+            synth: Synth::<KarplusVoice>::new(),
         }
     }
 
-    pub fn init(&mut self) {
-        self.link.start();
-    }
-
-    #[inline]
-    pub fn process(&mut self, events: &mut HashMap<usize, Vec<Note>>, frame_count: f32) {
-        let tempo = self.link.get_tempo();
-        let seq_length_in_samples =
-            Self::beat_time_to_samples(self.sequence.length as f32, tempo, self.sample_rate);
-        let beat_pos_in_samples = Self::beat_time_to_samples(
-            self.link.get_beat_time() % self.sequence.length as f32,
-            tempo,
-            self.sample_rate,
-        );
-        let buf_start_time = beat_pos_in_samples % seq_length_in_samples;
-        let buf_end_time = buf_start_time + frame_count;
-
-        // stop playing notes
-        let mut stopped_notes = vec![];
-        for ev in &self.playing_notes {
-            let stop_time =
-                Self::beat_time_to_samples(ev.step + ev.duration, tempo, self.sample_rate);
-            let is_in_buffer = Self::is_in_buffer(stop_time, buf_start_time, buf_end_time);
-            let loops_around = Self::loops_around(stop_time, buf_end_time, seq_length_in_samples);
-            if is_in_buffer || loops_around {
-                let offset = if loops_around {
-                    stop_time + (seq_length_in_samples - buf_start_time)
-                } else {
-                    stop_time - buf_start_time
-                };
-
-                if !events.contains_key(&(offset as usize)) {
-                    events.insert(offset as usize, vec![Note::Off { pitch: ev.pitch }]);
-                } else {
-                    events
-                        .get_mut(&(offset as usize))
-                        .unwrap()
-                        .push(Note::Off { pitch: ev.pitch });
+    fn get_msgs(&mut self) {
+        if let Ok(msg) = self.rx.try_recv() {
+            match msg {
+                Message::Add(event) => {
+                    self.sequence.events.push(event);
                 }
-                stopped_notes.push(ev.clone());
+                Message::Clear => {
+                    self.sequence.events.clear();
+                }
             }
         }
-        for note in stopped_notes {
-            self.playing_notes.retain(|n| n != &note);
-        }
+    }
+
+    fn beat_to_samples(beat_time: f32, tempo: f32) -> i32 {
+        (beat_time / tempo * 60.0 * SAMPLE_RATE as f32) as i32
+    }
+
+    fn is_in_buffer(time: i32, buffer_start: i32, buffer_end: i32) -> bool {
+        time >= buffer_start && time < buffer_end
+    }
+
+    fn loops_around(time: i32, buffer_end: i32, length: i32) -> bool {
+        buffer_end > length && time <= (buffer_end % length)
+    }
+
+    pub fn process(
+        &mut self,
+        buf_l: &mut [f32],
+        buf_r: &mut [f32],
+        sample_time: i32,
+        tempo: f32,
+        num_frames: i32,
+    ) {
+        self.get_msgs();
+
+        let length = Self::beat_to_samples(self.sequence.length, tempo);
+        let buffer_start = sample_time % length;
+        let buffer_end = buffer_start + num_frames;
 
         for ev in &self.sequence.events {
-            let ev_time = Self::beat_time_to_samples(ev.step, tempo, self.sample_rate);
-            let is_in_buffer = Self::is_in_buffer(ev_time, buf_start_time, buf_end_time);
-            let loops_around = Self::loops_around(ev_time, buf_end_time, seq_length_in_samples);
-            if is_in_buffer || loops_around {
-                let offset = if loops_around {
-                    ev_time + (seq_length_in_samples - buf_start_time)
-                } else {
-                    ev_time - buf_start_time
-                };
+            let mut event_time = Self::beat_to_samples(ev.beat_time, tempo);
+            let mut is_in_buffer = Self::is_in_buffer(event_time, buffer_start, buffer_end);
 
-                if !events.contains_key(&(offset as usize)) {
-                    events.insert(
-                        offset as usize,
-                        vec![Note::On {
-                            pitch: ev.pitch,
-                            velocity: 100,
-                        }],
-                    );
-                } else {
-                    events.get_mut(&(offset as usize)).unwrap().push(Note::On {
-                        pitch: ev.pitch,
-                        velocity: 100,
-                    });
-                }
-                self.playing_notes.push(ev.clone());
+            // check if event loops around (ie, is in beginning of next buffer)
+            if Self::loops_around(event_time, buffer_end, length) {
+                is_in_buffer = true;
+                event_time += length - buffer_start;
+            }
+
+            if is_in_buffer {
+                let note_on = ScheduledEvent::NoteOn {
+                    time: event_time,
+                    pitch: ev.pitch,
+                    velocity: ev.velocity,
+                    param1: ev.param1,
+                    param2: ev.param2,
+                };
+                // TODO: stop already playing notes at same pitch
+                self.scheduled_events.push(note_on);
+
+                let duration = Self::beat_to_samples(ev.duration, tempo);
+                let note_off = ScheduledEvent::NoteOff {
+                    time: (event_time + duration) % length,
+                    pitch: ev.pitch,
+                };
+                self.scheduled_events.push(note_off);
             }
         }
-    }
 
-    pub fn add_event(&mut self, ev: Event) {
-        self.sequence.events.push(ev);
-    }
+        for frame in buffer_start..buffer_end {
+            let mut to_remove = Vec::new();
 
-    pub fn load_sequence(&mut self, sequence: Sequence) {
-        self.sequence = sequence;
-    }
+            for (index, ev) in self.scheduled_events.iter().enumerate() {
+                // Function to extract the time field from an event
+                let event_time = match *ev {
+                    ScheduledEvent::NoteOn { time, .. } | ScheduledEvent::NoteOff { time, .. } => {
+                        time
+                    }
+                };
 
-    fn beat_time_to_samples(beat_time: f32, tempo: f32, sample_rate: f32) -> f32 {
-        beat_time / tempo * 60. * sample_rate
-    }
+                // Compare the extracted time with frame % length
+                if event_time == frame % length {
+                    match ev {
+                        ScheduledEvent::NoteOn {
+                            time: _,
+                            pitch,
+                            velocity,
+                            param1,
+                            param2,
+                        } => self
+                            .synth
+                            .play(*pitch as u8, *velocity as u8, *param1, *param2),
+                        ScheduledEvent::NoteOff { time: _, pitch } => self.synth.stop(*pitch as u8),
+                    }
+                    to_remove.push(index);
+                }
+            }
 
-    fn is_in_buffer(ev_time: f32, buf_start_time: f32, buffer_end_time: f32) -> bool {
-        ev_time >= buf_start_time && ev_time < buffer_end_time
-    }
+            for index in to_remove.iter().rev() {
+                self.scheduled_events.swap_remove(*index);
+            }
+        }
 
-    fn loops_around(ev_time: f32, buffer_end_time: f32, seq_length_in_samples: f32) -> bool {
-        buffer_end_time > seq_length_in_samples
-            && ev_time <= (buffer_end_time % seq_length_in_samples)
+        for (l, r) in buf_l.iter_mut().zip(buf_r.iter_mut()) {
+            let mut left = 0.0;
+            let mut right = 0.0;
+            self.synth.process(&mut left, &mut right);
+            *l += left;
+            *r += right;
+        }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+enum ScheduledEvent {
+    NoteOn {
+        time: i32,
+        pitch: i8,
+        velocity: i8,
+        param1: f32,
+        param2: f32,
+    },
+    NoteOff {
+        time: i32,
+        pitch: i8,
+    },
+}
 
-    struct MockLink {
-        beat_time: f32,
-        tempo: f32,
-    }
-
-    impl LinkTrait for MockLink {
-        fn start(&mut self) {
-            self.beat_time = -1.;
-        }
-
-        fn get_beat_time(&mut self) -> f32 {
-            self.beat_time
-        }
-
-        fn get_tempo(&mut self) -> f32 {
-            self.tempo += 1.;
-            self.tempo
-        }
-    }
-
-    #[test]
-    fn test_beat_time_to_samples() {
-        let tempo = 120.;
-        let sample_rate = 48000.;
-        let beat_time = 1.;
-        let samples = Sequencer::<MockLink>::beat_time_to_samples(beat_time, tempo, sample_rate);
-        assert_eq!(samples, 24000.);
-    }
-
-    #[test]
-    fn test_is_in_buffer() {
-        let buf_start_time = 0.;
-        let buf_end_time = 10.;
-        let ev_time = 5.;
-        assert_eq!(
-            Sequencer::<MockLink>::is_in_buffer(ev_time, buf_start_time, buf_end_time),
-            true
-        );
-    }
+struct Sequence {
+    events: Vec<Event>,
+    length: f32,
 }

@@ -9,5 +9,6 @@ pub mod osc;
 pub mod plot;
 pub mod reverb;
 pub mod sequencer;
+pub mod subtractive;
 pub mod synth;
 pub mod utils;
