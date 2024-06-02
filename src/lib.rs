@@ -1,6 +1,7 @@
 pub mod consts;
 pub mod delay;
 pub mod drums;
+pub mod engine;
 pub mod envelopes;
 pub mod filters;
 pub mod karplus;
