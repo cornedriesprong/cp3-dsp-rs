@@ -1,6 +1,7 @@
 use crate::karplus::KarplusVoice;
 use crate::sequencer::{Message, ScheduledEvent, Sequencer};
 use crate::synth::Synth;
+use crossbeam::channel::Receiver;
 use std::collections::HashMap;
 
 pub struct Engine {
@@ -9,7 +10,7 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new(rx: std::sync::mpsc::Receiver<Message>) -> Self {
+    pub fn new(rx: Receiver<Message>) -> Self {
         Engine {
             sequencer: Sequencer::new(rx, 4.),
             synth: Synth::<KarplusVoice>::new(),

@@ -1,5 +1,5 @@
 use crate::consts::SAMPLE_RATE;
-use std::sync::mpsc::Receiver;
+use crossbeam::channel::Receiver;
 use std::{collections::HashMap, usize};
 
 #[derive(Clone)]
