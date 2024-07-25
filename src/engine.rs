@@ -1,6 +1,7 @@
 use crate::karplus::KarplusVoice;
-use crate::sequencer::{Message, ScheduledEvent, Sequencer};
+use crate::sequencer::{ScheduledEvent, Sequencer};
 use crate::synth::Synth;
+use crate::Message;
 use crossbeam::channel::Receiver;
 use std::collections::HashMap;
 

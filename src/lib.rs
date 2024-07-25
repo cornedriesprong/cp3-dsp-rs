@@ -63,6 +63,12 @@ pub extern "C" fn add_event(
 }
 
 #[no_mangle]
+pub extern "C" fn clear_events() {
+    let sender = get_sender();
+    sender.send(Message::Clear).unwrap();
+}
+
+#[no_mangle]
 pub extern "C" fn render(
     engine: *mut Engine,
     buf_l: *mut c_float,
