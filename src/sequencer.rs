@@ -157,10 +157,11 @@ struct Sequence {
 mod tests {
     use super::*;
     use crate::sequencer;
+    use crossbeam::channel;
 
     #[test]
     fn new_creates_sequencer() {
-        let (_, rx) = std::sync::mpsc::channel();
+        let (_, rx) = channel::unbounded();
         let sequencer = Sequencer::new(rx, 4.);
         assert_eq!(sequencer.sequence.events.len(), 0);
         assert_eq!(sequencer.sequence.length, 4.);
@@ -168,7 +169,7 @@ mod tests {
 
     #[test]
     fn add_event() {
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = channel::unbounded();
         let length = 4.;
         let mut sequencer = Sequencer::new(rx, length);
         let tempo = 120.0;
@@ -197,7 +198,7 @@ mod tests {
 
     #[test]
     fn polyphonic_event() {
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = channel::unbounded();
         let length = 4.;
         let mut sequencer = Sequencer::new(rx, length);
         let tempo = 120.0;
@@ -244,7 +245,7 @@ mod tests {
 
     #[test]
     fn clear_events() {
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = channel::unbounded();
         let length = 4.;
         let mut sequencer = Sequencer::new(rx, length);
         let tempo: f32 = 120.0;
@@ -273,7 +274,7 @@ mod tests {
 
     #[test]
     fn schedule_event() {
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = channel::unbounded();
         let length = 4.;
         let mut sequencer = Sequencer::new(rx, length);
 
