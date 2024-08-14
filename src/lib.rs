@@ -73,7 +73,7 @@ pub extern "C" fn render(
     engine: *mut Engine,
     buf_l: *mut c_float,
     buf_r: *mut c_float,
-    sample_time: i32,
+    sample_time: i64,
     tempo: f32,
     num_frames: i32,
 ) {

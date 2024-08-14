@@ -22,7 +22,7 @@ impl Engine {
         &mut self,
         buf_l: &mut [f32],
         buf_r: &mut [f32],
-        sample_time: i32,
+        sample_time: i64,
         tempo: f32,
         num_frames: i32,
     ) {

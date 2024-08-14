@@ -53,15 +53,15 @@ impl Sequencer {
     pub fn process(
         &mut self,
         events: &mut HashMap<usize, Vec<ScheduledEvent>>,
-        sample_time: i32,
+        sample_time: i64,
         tempo: f32,
         num_frames: i32,
     ) {
         self.get_msgs();
 
         let length = Self::beat_to_samples(self.sequence.length, tempo);
-        let buffer_start = sample_time % length;
-        let buffer_end = buffer_start + num_frames;
+        let buffer_start = (sample_time % length as i64) as i32;
+        let buffer_end = buffer_start as i32 + num_frames;
 
         for ev in &self.sequence.events {
             let mut event_time = Self::beat_to_samples(ev.beat_time, tempo);
@@ -294,7 +294,7 @@ mod tests {
 
         for i in 0..frame_count as usize {
             let mut events = HashMap::new();
-            sequencer.process(&mut events, i as i32, tempo, 1);
+            sequencer.process(&mut events, i as i64, tempo, 1);
             let sample_time = Sequencer::beat_to_samples(beat_time, tempo);
             let duration_in_samples = Sequencer::beat_to_samples(duration, tempo);
             if i == sample_time as usize {

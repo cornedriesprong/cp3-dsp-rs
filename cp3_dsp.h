@@ -34,7 +34,7 @@ void clear_events(void);
 void render(struct Engine *engine,
             float *buf_l,
             float *buf_r,
-            int32_t sample_time,
+            int64_t sample_time,
             float tempo,
             int32_t num_frames);
 
