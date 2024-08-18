@@ -1,5 +1,5 @@
-use crate::karplus::KarplusVoice;
 use crate::sequencer::{ScheduledEvent, Sequencer};
+use crate::subtractive::SubtractiveVoice;
 use crate::synth::Synth;
 use crate::Message;
 use crossbeam::channel::Receiver;
@@ -7,14 +7,14 @@ use std::collections::HashMap;
 
 pub struct Engine {
     sequencer: Sequencer,
-    synth: Synth<KarplusVoice>,
+    synth: Synth<SubtractiveVoice>,
 }
 
 impl Engine {
     pub fn new(rx: Receiver<Message>) -> Self {
         Engine {
-            sequencer: Sequencer::new(rx, 4.),
-            synth: Synth::<KarplusVoice>::new(),
+            sequencer: Sequencer::new(rx, 8.),
+            synth: Synth::<SubtractiveVoice>::new(),
         }
     }
 
