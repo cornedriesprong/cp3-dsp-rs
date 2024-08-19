@@ -1,4 +1,4 @@
-use crate::consts::SAMPLE_RATE;
+use crate::{consts::SAMPLE_RATE, update_playback_progress, PROGRESS_CALLBACK};
 use crossbeam::channel::Receiver;
 use std::{collections::HashMap, usize};
 
@@ -82,6 +82,7 @@ impl Sequencer {
 
         let beat_time = Self::sample_to_beat(sample_time % length as i64, tempo);
         self.get_msgs(beat_time);
+        Self::update_playback_progress(beat_time);
 
         for ev in &self.sequence.events {
             let mut event_time = Self::beat_to_sample(ev.beat_time, tempo);
@@ -139,6 +140,12 @@ impl Sequencer {
             for index in to_remove.iter().rev() {
                 self.scheduled_events.swap_remove(*index);
             }
+        }
+    }
+
+    fn update_playback_progress(progress: f32) {
+        if let Some(callback) = *PROGRESS_CALLBACK.lock().unwrap() {
+            callback(progress);
         }
     }
 

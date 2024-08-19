@@ -20,6 +20,10 @@
 
 typedef struct Engine Engine;
 
+typedef void (*PlaybackProgressCallback)(float);
+
+void set_playback_progress_callback(PlaybackProgressCallback callback);
+
 struct Engine *engine_init(void);
 
 void add_event(float beat_time,

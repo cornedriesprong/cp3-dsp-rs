@@ -24,6 +24,7 @@ pub mod utils;
 lazy_static! {
     static ref CHANNEL: Mutex<(channel::Sender<Message>, channel::Receiver<Message>)> =
         Mutex::new(channel::unbounded());
+    static ref PROGRESS_CALLBACK: Mutex<Option<PlaybackProgressCallback>> = Mutex::new(None);
 }
 
 fn get_sender() -> channel::Sender<Message> {
@@ -32,6 +33,23 @@ fn get_sender() -> channel::Sender<Message> {
 
 fn get_receiver() -> channel::Receiver<Message> {
     CHANNEL.lock().unwrap().1.clone()
+}
+
+// Callback type definition
+type PlaybackProgressCallback = extern "C" fn(f32);
+
+#[no_mangle]
+pub extern "C" fn set_playback_progress_callback(callback: PlaybackProgressCallback) {
+    let mut cb = PROGRESS_CALLBACK.lock().unwrap();
+    *cb = Some(callback);
+}
+
+// This function should be called from your audio processing code
+// whenever the playback progress changes
+pub fn update_playback_progress(progress: f32) {
+    if let Some(callback) = *PROGRESS_CALLBACK.lock().unwrap() {
+        callback(progress);
+    }
 }
 
 #[no_mangle]
