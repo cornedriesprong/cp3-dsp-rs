@@ -1,7 +1,7 @@
 use crossbeam::channel;
 use engine::Engine;
 use lazy_static::lazy_static;
-use sequencer::{Event, Message};
+use sequencer::{Event, Message, Note};
 use std::os::raw::c_float;
 use std::sync::Mutex;
 
@@ -59,7 +59,19 @@ pub extern "C" fn add_event(
         param1,
         param2,
     };
-    sender.send(Message::Add(event)).unwrap();
+    sender.send(Message::Schedule(event)).unwrap();
+}
+
+#[no_mangle]
+pub extern "C" fn note_on(pitch: i8, velocity: i8, param1: f32, param2: f32) {
+    let sender = get_sender();
+    let note_on = Note::NoteOn {
+        pitch,
+        velocity,
+        param1,
+        param2,
+    };
+    sender.send(Message::Play(note_on)).unwrap();
 }
 
 #[no_mangle]

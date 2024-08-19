@@ -2,6 +2,11 @@ use crate::consts::SAMPLE_RATE;
 use crossbeam::channel::Receiver;
 use std::{collections::HashMap, usize};
 
+struct Sequence {
+    events: Vec<Event>,
+    length: f32,
+}
+
 #[derive(Clone)]
 pub struct Event {
     pub beat_time: f32,
@@ -13,8 +18,22 @@ pub struct Event {
 }
 
 pub enum Message {
-    Add(Event),
+    Schedule(Event),
+    Play(Note),
     Clear,
+}
+
+#[derive(Clone, Debug)]
+pub enum Note {
+    NoteOn {
+        pitch: i8,
+        velocity: i8,
+        param1: f32,
+        param2: f32,
+    },
+    NoteOff {
+        pitch: i8,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -57,14 +76,15 @@ impl Sequencer {
         tempo: f32,
         num_frames: i32,
     ) {
-        self.get_msgs();
-
-        let length = Self::beat_to_samples(self.sequence.length, tempo);
+        let length = Self::beat_to_sample(self.sequence.length, tempo);
         let buffer_start = (sample_time % length as i64) as i32;
         let buffer_end = buffer_start as i32 + num_frames;
 
+        let beat_time = Self::sample_to_beat(sample_time % length as i64, tempo);
+        self.get_msgs(beat_time);
+
         for ev in &self.sequence.events {
-            let mut event_time = Self::beat_to_samples(ev.beat_time, tempo);
+            let mut event_time = Self::beat_to_sample(ev.beat_time, tempo);
             let mut is_in_buffer = Self::is_in_buffer(event_time, buffer_start, buffer_end);
 
             // check if event loops around (ie, is in beginning of next buffer)
@@ -84,7 +104,7 @@ impl Sequencer {
                 // TODO: stop already playing notes at same pitch
                 self.scheduled_events.push(note_on);
 
-                let duration = Self::beat_to_samples(ev.duration, tempo);
+                let duration = Self::beat_to_sample(ev.duration, tempo);
                 let note_off = ScheduledEvent::NoteOff {
                     time: (event_time + duration) % length,
                     pitch: ev.pitch,
@@ -122,16 +142,42 @@ impl Sequencer {
         }
     }
 
-    pub fn beat_to_samples(beat_time: f32, tempo: f32) -> i32 {
+    pub fn beat_to_sample(beat_time: f32, tempo: f32) -> i32 {
         (beat_time / tempo * 60.0 * SAMPLE_RATE as f32) as i32
     }
 
-    fn get_msgs(&mut self) {
+    pub fn sample_to_beat(sample_time: i64, tempo: f32) -> f32 {
+        sample_time as f32 / SAMPLE_RATE as f32 * tempo / 60.0
+    }
+
+    fn get_msgs(&mut self, beat_time: f32) {
         while let Ok(msg) = self.rx.try_recv() {
             match msg {
-                Message::Add(event) => {
+                Message::Schedule(event) => {
                     self.sequence.events.push(event);
                 }
+                Message::Play(note) => match note {
+                    Note::NoteOn {
+                        pitch,
+                        velocity,
+                        param1,
+                        param2,
+                    } => {
+                        // quantize to 16th notes
+                        let quantized_beat_time = (beat_time * 4.0).ceil() / 4.0;
+                        self.sequence.events.push(Event {
+                            beat_time: quantized_beat_time,
+                            pitch,
+                            velocity,
+                            param1,
+                            param2,
+                            duration: 0.5,
+                        });
+                    }
+                    Note::NoteOff { pitch } => {
+                        println!("play note off pitch: {}", pitch);
+                    }
+                },
                 Message::Clear => {
                     self.sequence.events.clear();
                 }
@@ -146,11 +192,6 @@ impl Sequencer {
     fn loops_around(time: i32, buffer_end: i32, length: i32) -> bool {
         buffer_end > length && time <= (buffer_end % length)
     }
-}
-
-struct Sequence {
-    events: Vec<Event>,
-    length: f32,
 }
 
 #[cfg(test)]
@@ -183,7 +224,7 @@ mod tests {
             param2: 0.0,
             duration,
         };
-        _ = tx.send(sequencer::Message::Add(event)).is_ok();
+        _ = tx.send(sequencer::Message::Schedule(event)).is_ok();
 
         // process one block to move event to scheduled events
         sequencer.process(&mut HashMap::new(), 0, tempo, 1);
@@ -213,7 +254,7 @@ mod tests {
             param2: 0.0,
             duration,
         };
-        _ = tx.send(sequencer::Message::Add(ev1)).is_ok();
+        _ = tx.send(sequencer::Message::Schedule(ev1)).is_ok();
 
         let ev2 = Event {
             beat_time,
@@ -223,7 +264,7 @@ mod tests {
             param2: 0.0,
             duration,
         };
-        _ = tx.send(sequencer::Message::Add(ev2)).is_ok();
+        _ = tx.send(sequencer::Message::Schedule(ev2)).is_ok();
 
         // process one block to move event to scheduled events
         sequencer.process(&mut HashMap::new(), 0, tempo, 1);
@@ -259,7 +300,7 @@ mod tests {
             param2: 0.0,
             duration,
         };
-        _ = tx.send(sequencer::Message::Add(event)).is_ok();
+        _ = tx.send(sequencer::Message::Schedule(event)).is_ok();
 
         // process one block to move event to scheduled events
         sequencer.process(&mut HashMap::new(), 0, tempo, 1);
@@ -290,13 +331,13 @@ mod tests {
             param2: 0.0,
             duration,
         };
-        _ = tx.send(sequencer::Message::Add(event)).is_ok();
+        _ = tx.send(sequencer::Message::Schedule(event)).is_ok();
 
         for i in 0..frame_count as usize {
             let mut events = HashMap::new();
             sequencer.process(&mut events, i as i64, tempo, 1);
-            let sample_time = Sequencer::beat_to_samples(beat_time, tempo);
-            let duration_in_samples = Sequencer::beat_to_samples(duration, tempo);
+            let sample_time = Sequencer::beat_to_sample(beat_time, tempo);
+            let duration_in_samples = Sequencer::beat_to_sample(duration, tempo);
             if i == sample_time as usize {
                 match events.get(&0).unwrap()[0] {
                     ScheduledEvent::NoteOn {
@@ -324,5 +365,28 @@ mod tests {
                 assert!(events.get(&0).is_none());
             }
         }
+    }
+
+    #[test]
+    fn play_events() {
+        let (tx, rx) = channel::unbounded();
+        let length = 4.;
+        let mut sequencer = Sequencer::new(rx, length);
+        let tempo = 120.0;
+
+        for i in 0..5 {
+            let event = Note::NoteOn {
+                pitch: 60,
+                velocity: 100,
+                param1: 0.0,
+                param2: 0.0,
+            };
+            _ = tx.send(sequencer::Message::Play(event)).is_ok();
+
+            // process one block to move event to scheduled events
+            sequencer.process(&mut HashMap::new(), i, tempo, 1);
+        }
+
+        assert!(sequencer.sequence.events.len() == 5);
     }
 }
