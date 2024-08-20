@@ -81,15 +81,28 @@ pub extern "C" fn add_event(
 }
 
 #[no_mangle]
-pub extern "C" fn note_on(pitch: i8, velocity: i8, param1: f32, param2: f32) {
-    let sender = get_sender();
+pub extern "C" fn note_on(engine: *mut Engine, pitch: i8, velocity: i8, param1: f32, param2: f32) {
+    let engine = unsafe {
+        assert!(!engine.is_null());
+        &mut *engine
+    };
     let note_on = Note::NoteOn {
         pitch,
         velocity,
         param1,
         param2,
     };
-    sender.send(Message::Play(note_on)).unwrap();
+    engine.note_on(pitch as u8, velocity as u8, param1, param2);
+}
+
+#[no_mangle]
+pub extern "C" fn note_off(engine: *mut Engine, pitch: i8) {
+    let engine = unsafe {
+        assert!(!engine.is_null());
+        &mut *engine
+    };
+    let note_off = Note::NoteOff { pitch };
+    engine.note_off(pitch as u8);
 }
 
 #[no_mangle]

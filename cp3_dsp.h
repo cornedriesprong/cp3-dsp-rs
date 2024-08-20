@@ -33,7 +33,9 @@ void add_event(float beat_time,
                float param1,
                float param2);
 
-void note_on(int8_t pitch, int8_t velocity, float param1, float param2);
+void note_on(struct Engine *engine, int8_t pitch, int8_t velocity, float param1, float param2);
+
+void note_off(struct Engine *engine, int8_t pitch);
 
 void clear_events(void);
 

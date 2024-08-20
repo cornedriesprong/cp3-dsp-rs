@@ -13,7 +13,7 @@ pub struct Engine {
 impl Engine {
     pub fn new(rx: Receiver<Message>) -> Self {
         Engine {
-            sequencer: Sequencer::new(rx, 8.),
+            sequencer: Sequencer::new(rx, 4.),
             synth: Synth::<SubtractiveVoice>::new(),
         }
     }
@@ -61,6 +61,14 @@ impl Engine {
             *r += right;
             frame += 1;
         }
+    }
+
+    pub fn note_on(&mut self, pitch: u8, velocity: u8, param1: f32, param2: f32) {
+        self.synth.play(pitch, velocity, param1, param2);
+    }
+
+    pub(crate) fn note_off(&mut self, pitch: u8) {
+        self.synth.stop(pitch);
     }
 }
 
