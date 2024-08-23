@@ -1,4 +1,4 @@
-use crate::{consts::SAMPLE_RATE, update_playback_progress, PROGRESS_CALLBACK};
+use crate::{consts::SAMPLE_RATE, PROGRESS_CALLBACK};
 use crossbeam::channel::Receiver;
 use std::{collections::HashMap, usize};
 
@@ -19,21 +19,8 @@ pub struct Event {
 
 pub enum Message {
     Schedule(Event),
-    Play(Note),
+    ParameterChange(i8, f32),
     Clear,
-}
-
-#[derive(Clone, Debug)]
-pub enum Note {
-    NoteOn {
-        pitch: i8,
-        velocity: i8,
-        param1: f32,
-        param2: f32,
-    },
-    NoteOff {
-        pitch: i8,
-    },
 }
 
 #[derive(Clone, Debug)]
@@ -54,18 +41,16 @@ pub enum ScheduledEvent {
 pub struct Sequencer {
     sequence: Sequence,
     scheduled_events: Vec<ScheduledEvent>,
-    rx: Receiver<Message>,
 }
 
 impl Sequencer {
-    pub fn new(rx: Receiver<Message>, length: f32) -> Self {
+    pub fn new(length: f32) -> Self {
         Sequencer {
             sequence: Sequence {
                 events: Vec::new(),
                 length,
             },
             scheduled_events: Vec::new(),
-            rx,
         }
     }
 
@@ -81,7 +66,6 @@ impl Sequencer {
         let buffer_end = buffer_start as i32 + num_frames;
 
         let beat_time = Self::sample_to_beat(sample_time % length as i64, tempo);
-        self.get_msgs(beat_time);
         Self::update_playback_progress(beat_time);
 
         for ev in &self.sequence.events {
@@ -157,47 +141,20 @@ impl Sequencer {
         sample_time as f32 / SAMPLE_RATE as f32 * tempo / 60.0
     }
 
-    fn get_msgs(&mut self, beat_time: f32) {
-        while let Ok(msg) = self.rx.try_recv() {
-            match msg {
-                Message::Schedule(event) => {
-                    self.sequence.events.push(event);
-                }
-                Message::Play(note) => match note {
-                    Note::NoteOn {
-                        pitch,
-                        velocity,
-                        param1,
-                        param2,
-                    } => {
-                        // quantize to 16th notes
-                        let quantized_beat_time = (beat_time * 4.0).ceil() / 4.0;
-                        self.sequence.events.push(Event {
-                            beat_time: quantized_beat_time,
-                            pitch,
-                            velocity,
-                            param1,
-                            param2,
-                            duration: 0.5,
-                        });
-                    }
-                    Note::NoteOff { pitch } => {
-                        println!("play note off pitch: {}", pitch);
-                    }
-                },
-                Message::Clear => {
-                    self.sequence.events.clear();
-                }
-            }
-        }
-    }
-
     fn is_in_buffer(time: i32, buffer_start: i32, buffer_end: i32) -> bool {
         time >= buffer_start && time < buffer_end
     }
 
     fn loops_around(time: i32, buffer_end: i32, length: i32) -> bool {
         buffer_end > length && time <= (buffer_end % length)
+    }
+
+    pub(crate) fn add_event(&mut self, event: Event) {
+        self.sequence.events.push(event);
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.sequence.events.clear();
     }
 }
 
@@ -372,28 +329,5 @@ mod tests {
                 assert!(events.get(&0).is_none());
             }
         }
-    }
-
-    #[test]
-    fn play_events() {
-        let (tx, rx) = channel::unbounded();
-        let length = 4.;
-        let mut sequencer = Sequencer::new(rx, length);
-        let tempo = 120.0;
-
-        for i in 0..5 {
-            let event = Note::NoteOn {
-                pitch: 60,
-                velocity: 100,
-                param1: 0.0,
-                param2: 0.0,
-            };
-            _ = tx.send(sequencer::Message::Play(event)).is_ok();
-
-            // process one block to move event to scheduled events
-            sequencer.process(&mut HashMap::new(), i, tempo, 1);
-        }
-
-        assert!(sequencer.sequence.events.len() == 5);
     }
 }

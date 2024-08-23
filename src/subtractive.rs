@@ -23,14 +23,18 @@ impl SynthVoice for SubtractiveVoice {
         }
     }
 
+    fn init(&mut self) {
+        // no-op
+    }
+
     #[inline]
-    fn process(&mut self) -> f32 {
-        if !self.env.is_active() {
-            return 0.0;
-        }
-        // let y = self.osc.process() * self.env.process() * self.velocity;
-        let y = self.osc.process();
-        self.filter.process(y)
+    fn process(&mut self, buf: &mut [f32]) {
+        todo!()
+        // if !self.env.is_active() {
+        //     return 0.0;
+        // }
+        // let y = self.osc.process();
+        // self.filter.process(y)
     }
 
     fn play(&mut self, pitch: u8, velocity: u8, param1: f32, param2: f32) {
@@ -52,6 +56,14 @@ impl SynthVoice for SubtractiveVoice {
     fn stop(&mut self) {
         self.env.release();
         self.pitch = None;
+    }
+
+    fn set_sound(&mut self, sound: i8) {
+        todo!()
+    }
+
+    fn set_parameter(&mut self, parameter: i8, value: f32) {
+        todo!()
     }
 
     fn get_pitch(&self) -> u8 {

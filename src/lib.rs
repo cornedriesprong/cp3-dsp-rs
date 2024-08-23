@@ -1,7 +1,7 @@
 use crossbeam::channel;
 use engine::Engine;
 use lazy_static::lazy_static;
-use sequencer::{Event, Message, Note};
+use sequencer::{Event, Message};
 use std::os::raw::c_float;
 use std::sync::Mutex;
 
@@ -14,6 +14,7 @@ pub mod filters;
 pub mod karplus;
 pub mod limiter;
 pub mod osc;
+pub mod plaits_voice;
 pub mod plot;
 pub mod reverb;
 pub mod sequencer;
@@ -21,10 +22,16 @@ pub mod subtractive;
 pub mod synth;
 pub mod utils;
 
+// Callback type definition
+type PlaybackProgressCallback = extern "C" fn(f32);
+
+type NotePlayedCallback = extern "C" fn(bool, i8);
+
 lazy_static! {
     static ref CHANNEL: Mutex<(channel::Sender<Message>, channel::Receiver<Message>)> =
         Mutex::new(channel::unbounded());
     static ref PROGRESS_CALLBACK: Mutex<Option<PlaybackProgressCallback>> = Mutex::new(None);
+    static ref NOTE_CALLBACK: Mutex<Option<NotePlayedCallback>> = Mutex::new(None);
 }
 
 fn get_sender() -> channel::Sender<Message> {
@@ -35,21 +42,16 @@ fn get_receiver() -> channel::Receiver<Message> {
     CHANNEL.lock().unwrap().1.clone()
 }
 
-// Callback type definition
-type PlaybackProgressCallback = extern "C" fn(f32);
-
 #[no_mangle]
 pub extern "C" fn set_playback_progress_callback(callback: PlaybackProgressCallback) {
     let mut cb = PROGRESS_CALLBACK.lock().unwrap();
     *cb = Some(callback);
 }
 
-// This function should be called from your audio processing code
-// whenever the playback progress changes
-pub fn update_playback_progress(progress: f32) {
-    if let Some(callback) = *PROGRESS_CALLBACK.lock().unwrap() {
-        callback(progress);
-    }
+#[no_mangle]
+pub extern "C" fn set_note_played_callback(callback: NotePlayedCallback) {
+    let mut cb = NOTE_CALLBACK.lock().unwrap();
+    *cb = Some(callback);
 }
 
 #[no_mangle]
@@ -86,12 +88,6 @@ pub extern "C" fn note_on(engine: *mut Engine, pitch: i8, velocity: i8, param1: 
         assert!(!engine.is_null());
         &mut *engine
     };
-    let note_on = Note::NoteOn {
-        pitch,
-        velocity,
-        param1,
-        param2,
-    };
     engine.note_on(pitch as u8, velocity as u8, param1, param2);
 }
 
@@ -101,8 +97,20 @@ pub extern "C" fn note_off(engine: *mut Engine, pitch: i8) {
         assert!(!engine.is_null());
         &mut *engine
     };
-    let note_off = Note::NoteOff { pitch };
     engine.note_off(pitch as u8);
+}
+
+#[no_mangle]
+pub extern "C" fn set_sound(engine: *mut Engine, sound: i8) {
+    todo!();
+}
+
+#[no_mangle]
+pub extern "C" fn set_parameter(parameter: i8, value: f32) {
+    let sender = get_sender();
+    sender
+        .send(Message::ParameterChange(parameter, value))
+        .unwrap();
 }
 
 #[no_mangle]

@@ -16,13 +16,17 @@
 
 #define MAX_BUFFER_SIZE 8192
 
-#define VOICE_COUNT 8
+#define VOICE_COUNT 1
 
 typedef struct Engine Engine;
 
 typedef void (*PlaybackProgressCallback)(float);
 
+typedef void (*NotePlayedCallback)(bool, int8_t);
+
 void set_playback_progress_callback(PlaybackProgressCallback callback);
+
+void set_note_played_callback(NotePlayedCallback callback);
 
 struct Engine *engine_init(void);
 
@@ -36,6 +40,10 @@ void add_event(float beat_time,
 void note_on(struct Engine *engine, int8_t pitch, int8_t velocity, float param1, float param2);
 
 void note_off(struct Engine *engine, int8_t pitch);
+
+void set_sound(struct Engine *engine, int8_t sound);
+
+void set_parameter(int8_t parameter, float value);
 
 void clear_events(void);
 

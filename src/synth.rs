@@ -1,15 +1,17 @@
 use crate::reverb::Reverb;
 
-pub const VOICE_COUNT: usize = 8;
+pub const VOICE_COUNT: usize = 1;
 
 pub trait SynthVoice {
     fn new() -> Self;
+    fn init(&mut self);
     fn get_pitch(&self) -> u8;
     fn play(&mut self, pitch: u8, velocity: u8, param1: f32, param2: f32);
     fn stop(&mut self);
+    fn set_parameter(&mut self, parameter: i8, value: f32);
     fn reset(&mut self);
     fn is_active(&self) -> bool;
-    fn process(&mut self) -> f32;
+    fn process(&mut self, buf: &mut [f32]);
 }
 
 pub struct Synth<V: SynthVoice> {
@@ -25,7 +27,9 @@ impl<V: SynthVoice> Synth<V> {
     pub fn new() -> Self {
         let mut voices = Vec::new();
         for _ in 0..VOICE_COUNT {
-            voices.push(V::new());
+            let mut voice = V::new();
+            voice.init();
+            voices.push(voice);
         }
 
         Self {
@@ -53,19 +57,33 @@ impl<V: SynthVoice> Synth<V> {
         }
     }
 
-    #[inline]
-    pub fn process(&mut self, y1: &mut f32, y2: &mut f32) {
-        // mix down voices
-        let mix = self
-            .voices
-            .iter_mut()
-            .filter(|voice| voice.is_active())
-            .fold(0.0, |acc, voice| acc + voice.process())
-            / VOICE_COUNT as f32;
+    pub fn process(&mut self, buf_l: &mut [f32], buf_r: &mut [f32]) {
+        assert_eq!(
+            buf_l.len(),
+            buf_r.len(),
+            "Left and right buffers must be the same length"
+        );
 
-        // mix in reverb
-        *y1 = mix + (self.rev_l.process(mix) * self.rev_level);
-        *y2 = mix + (self.rev_r.process(mix) * self.rev_level);
+        for voice in self.voices.iter_mut().filter(|v| v.is_active()) {
+            voice.process(buf_l);
+        }
+
+        buf_r.copy_from_slice(buf_l);
+
+        // TODO: mix in reverb
+        // *l = mix + (self.rev_l.process(mix) * self.rev_level);
+        // *y2 = mix + (self.rev_r.process(mix) * self.rev_level);
+    }
+
+    pub fn set_sound(&mut self, sound: i8) {
+        // TODO: change voice type
+        todo!()
+    }
+
+    pub(crate) fn set_parameter(&mut self, parameter: i8, value: f32) {
+        for voice in self.voices.iter_mut() {
+            voice.set_parameter(parameter, value);
+        }
     }
 }
 
