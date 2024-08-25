@@ -12,7 +12,6 @@ mi-plaits-dsp = { git = "https://github.com/sourcebox/mi-plaits-dsp-rs.git", bra
 plotters = "0.3.6"
 rand = "0.8.4"
 rustfft = "=6.2.0"
-rusty_link = "0.4.3"
 
 [lib]
 name = "cp3_dsp"
