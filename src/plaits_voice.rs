@@ -1,4 +1,6 @@
 use crate::consts::SAMPLE_RATE;
+use crate::delay::{self, Delay};
+use crate::reverb::Reverb;
 use crate::synth::SynthVoice;
 use crate::utils::pitch_to_freq;
 use mi_plaits_dsp::dsp::drums::{analog_bass_drum, analog_snare_drum, hihat};
@@ -357,6 +359,8 @@ pub struct PlaitsDrums {
     kick: PlaitsKick,
     snare: PlaitsSnare,
     hihat: PlaitsHihat,
+    reverb: Reverb,
+    delay: Delay,
 }
 
 impl SynthVoice for PlaitsDrums {
@@ -365,6 +369,8 @@ impl SynthVoice for PlaitsDrums {
             kick: PlaitsKick::new(),
             snare: PlaitsSnare::new(),
             hihat: PlaitsHihat::new(),
+            reverb: Reverb::new(),
+            delay: Delay::new(SAMPLE_RATE * (1.0 / 3.0), 0.5),
         }
     }
 
@@ -381,7 +387,12 @@ impl SynthVoice for PlaitsDrums {
         mix += self.snare.process();
         mix += self.hihat.process();
 
-        mix / 3.0
+        mix /= 3.0;
+
+        let reverb = self.reverb.process(mix);
+        let delay = self.delay.tick(mix);
+
+        mix + (reverb * 0.1) + (delay * 0.5)
     }
 
     fn play(&mut self, pitch: u8, velocity: u8, _: f32, _: f32) {
@@ -398,7 +409,31 @@ impl SynthVoice for PlaitsDrums {
 
     fn stop(&mut self) {}
 
-    fn set_parameter(&mut self, _: i8, _: f32) {}
+    fn set_parameter(&mut self, parameter: i8, value: f32) {
+        match parameter {
+            0 => {
+                self.kick.tone = value;
+                self.snare.tone = value;
+                self.hihat.tone = value;
+            }
+            1 => {
+                self.kick.decay = value;
+                self.snare.decay = value;
+                self.hihat.decay = value;
+            }
+            2 => {
+                self.kick.attack_fm_amount = value;
+                self.snare.tone = value;
+                self.hihat.tone = value;
+            }
+            3 => {
+                self.kick.self_fm_amount = value;
+                self.snare.snappy = value;
+                self.hihat.noisiness = value;
+            }
+            _ => (),
+        }
+    }
 
     fn get_pitch(&self) -> u8 {
         0

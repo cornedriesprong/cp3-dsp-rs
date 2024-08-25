@@ -1,3 +1,4 @@
+use core::time;
 use std::vec;
 
 // const BUFFER_LENGTH: usize = 48000; // 5 seconds at 48 Khz
@@ -18,7 +19,7 @@ pub struct Delay {
 impl Delay {
     pub fn new(time_samples: f32, feedback: f32) -> Self {
         Self {
-            delay_line: DelayLine::new(InterpolationType::Cubic, 1000),
+            delay_line: DelayLine::new(InterpolationType::Cubic, time_samples as usize),
             time_samples,
             feedback,
         }

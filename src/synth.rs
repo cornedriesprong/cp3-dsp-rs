@@ -37,7 +37,7 @@ impl<V: SynthVoice> Synth<V> {
             current_voice_index: 0,
             rev_l: Reverb::new(),
             rev_r: Reverb::new(),
-            rev_level: 0.5,
+            rev_level: 1.0,
         }
     }
 
@@ -62,11 +62,10 @@ impl<V: SynthVoice> Synth<V> {
         for voice in self.voices.iter_mut().filter(|v| v.is_active()) {
             mix += voice.process();
         }
-        mix / VOICE_COUNT as f32
+        // mix /= VOICE_COUNT as f32;
+        mix += self.rev_l.process(mix);
 
-        // TODO: mix in reverb
-        // *l = mix + (self.rev_l.process(mix) * self.rev_level);
-        // *y2 = mix + (self.rev_r.process(mix) * self.rev_level);
+        mix
     }
 
     pub fn set_sound(&mut self, sound: i8) {
