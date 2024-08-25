@@ -1,21 +1,23 @@
-use crate::plaits_voice::PlaitsKick;
+use crate::plaits_voice::{PlaitsDrums, PlaitsVoice};
 use crate::sequencer::{ScheduledEvent, Sequencer};
-use crate::synth::Synth;
+use crate::synth::{Synth, SynthVoice};
 use crate::{Message, NOTE_CALLBACK};
 use crossbeam::channel::Receiver;
 use std::collections::HashMap;
 
-pub struct Engine {
+pub struct Engine<'a> {
     sequencer: Sequencer,
-    synth: Synth<PlaitsKick>,
+    synth: Synth<PlaitsVoice<'a>>,
+    drums: PlaitsDrums,
     rx: Receiver<Message>,
 }
 
-impl Engine {
+impl Engine<'_> {
     pub fn new(rx: Receiver<Message>) -> Self {
         Engine {
             sequencer: Sequencer::new(4.),
-            synth: Synth::<PlaitsKick>::new(),
+            synth: Synth::<PlaitsVoice>::new(),
+            drums: PlaitsDrums::new(),
             rx,
         }
     }
@@ -46,7 +48,7 @@ impl Engine {
                             param1,
                             param2,
                         } => {
-                            self.synth
+                            self.drums
                                 .play(*pitch as u8, *velocity as u8, *param1, *param2);
                             Self::note_played(true, *pitch);
                         }
@@ -57,23 +59,20 @@ impl Engine {
                     }
                 }
             }
-        }
 
-        // process audio
-        self.synth.process(buf_l, buf_r);
+            let s = self.drums.process();
+            buf_l[frame as usize] = s;
+            buf_r[frame as usize] = s;
+        }
     }
 
     pub fn note_on(&mut self, pitch: u8, velocity: u8, param1: f32, param2: f32) {
-        self.synth.play(pitch, velocity, param1, param2);
+        self.drums.play(pitch, velocity, param1, param2);
     }
 
-    pub fn note_off(&mut self, pitch: u8) {
-        self.synth.stop(pitch);
-    }
+    pub fn note_off(&mut self, pitch: u8) {}
 
-    pub fn set_sound(&mut self, sound: i8) {
-        self.synth.set_sound(sound);
-    }
+    pub fn set_sound(&mut self, sound: i8) {}
 
     pub fn get_msgs(&mut self) {
         while let Ok(msg) = self.rx.try_recv() {
@@ -85,7 +84,7 @@ impl Engine {
                     self.sequencer.clear();
                 }
                 Message::ParameterChange(parameter, value) => {
-                    self.synth.set_parameter(parameter, value);
+                    self.drums.set_parameter(parameter, value);
                 }
             }
         }

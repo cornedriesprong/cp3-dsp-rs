@@ -28,7 +28,7 @@ impl SynthVoice for SubtractiveVoice {
     }
 
     #[inline]
-    fn process(&mut self, buf: &mut [f32]) {
+    fn process(&mut self) -> f32 {
         todo!()
         // if !self.env.is_active() {
         //     return 0.0;
@@ -56,10 +56,6 @@ impl SynthVoice for SubtractiveVoice {
     fn stop(&mut self) {
         self.env.release();
         self.pitch = None;
-    }
-
-    fn set_sound(&mut self, sound: i8) {
-        todo!()
     }
 
     fn set_parameter(&mut self, parameter: i8, value: f32) {

@@ -1,5 +1,4 @@
 use crate::{consts::SAMPLE_RATE, PROGRESS_CALLBACK};
-use crossbeam::channel::Receiver;
 use std::{collections::HashMap, usize};
 
 struct Sequence {
@@ -161,22 +160,19 @@ impl Sequencer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sequencer;
-    use crossbeam::channel;
 
     #[test]
     fn new_creates_sequencer() {
-        let (_, rx) = channel::unbounded();
-        let sequencer = Sequencer::new(rx, 4.);
+        // let (_, rx) = channel::unbounded();
+        let sequencer = Sequencer::new(4.);
         assert_eq!(sequencer.sequence.events.len(), 0);
         assert_eq!(sequencer.sequence.length, 4.);
     }
 
     #[test]
     fn add_event() {
-        let (tx, rx) = channel::unbounded();
         let length = 4.;
-        let mut sequencer = Sequencer::new(rx, length);
+        let mut sequencer = Sequencer::new(length);
         let tempo = 120.0;
         let beat_time = 1.0;
         let duration = 1.0;
@@ -188,7 +184,7 @@ mod tests {
             param2: 0.0,
             duration,
         };
-        _ = tx.send(sequencer::Message::Schedule(event)).is_ok();
+        sequencer.add_event(event);
 
         // process one block to move event to scheduled events
         sequencer.process(&mut HashMap::new(), 0, tempo, 1);
@@ -203,9 +199,8 @@ mod tests {
 
     #[test]
     fn polyphonic_event() {
-        let (tx, rx) = channel::unbounded();
         let length = 4.;
-        let mut sequencer = Sequencer::new(rx, length);
+        let mut sequencer = Sequencer::new(length);
         let tempo = 120.0;
         let beat_time = 1.0;
         let duration = 1.0;
@@ -218,7 +213,7 @@ mod tests {
             param2: 0.0,
             duration,
         };
-        _ = tx.send(sequencer::Message::Schedule(ev1)).is_ok();
+        sequencer.add_event(ev1);
 
         let ev2 = Event {
             beat_time,
@@ -228,7 +223,7 @@ mod tests {
             param2: 0.0,
             duration,
         };
-        _ = tx.send(sequencer::Message::Schedule(ev2)).is_ok();
+        sequencer.add_event(ev2);
 
         // process one block to move event to scheduled events
         sequencer.process(&mut HashMap::new(), 0, tempo, 1);
@@ -250,9 +245,8 @@ mod tests {
 
     #[test]
     fn clear_events() {
-        let (tx, rx) = channel::unbounded();
         let length = 4.;
-        let mut sequencer = Sequencer::new(rx, length);
+        let mut sequencer = Sequencer::new(length);
         let tempo: f32 = 120.0;
         let beat_time = 1.0;
         let duration = 1.0;
@@ -264,7 +258,7 @@ mod tests {
             param2: 0.0,
             duration,
         };
-        _ = tx.send(sequencer::Message::Schedule(event)).is_ok();
+        sequencer.add_event(event);
 
         // process one block to move event to scheduled events
         sequencer.process(&mut HashMap::new(), 0, tempo, 1);
@@ -272,16 +266,15 @@ mod tests {
         assert_eq!(sequencer.sequence.events.len(), 1);
 
         // clear events
-        _ = tx.send(sequencer::Message::Clear).is_ok();
+        sequencer.clear();
         sequencer.process(&mut HashMap::new(), 0, tempo, 1);
         assert_eq!(sequencer.sequence.events.len(), 0);
     }
 
     #[test]
     fn schedule_event() {
-        let (tx, rx) = channel::unbounded();
         let length = 4.;
-        let mut sequencer = Sequencer::new(rx, length);
+        let mut sequencer = Sequencer::new(length);
 
         let tempo: f32 = 120.0;
         let frame_count = 60.0 / tempo * length * SAMPLE_RATE as f32;
@@ -295,7 +288,7 @@ mod tests {
             param2: 0.0,
             duration,
         };
-        _ = tx.send(sequencer::Message::Schedule(event)).is_ok();
+        sequencer.add_event(event);
 
         for i in 0..frame_count as usize {
             let mut events = HashMap::new();
@@ -327,6 +320,50 @@ mod tests {
                 }
             } else {
                 assert!(events.get(&0).is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn check_timing() {
+        let length = 4.;
+        let mut sequencer = Sequencer::new(length);
+        let tempo: f32 = 120.0;
+        let frame_count = 60.0 / tempo * length * SAMPLE_RATE as f32;
+
+        // schedule 4 events at equidistant intervals
+        for i in 0..4 {
+            let event = Event {
+                beat_time: i as f32,
+                pitch: 60,
+                velocity: 100,
+                param1: 0.0,
+                param2: 0.0,
+                duration: 1.0,
+            };
+            sequencer.add_event(event);
+        }
+
+        for i in 0..frame_count as usize {
+            let mut events = HashMap::new();
+            sequencer.process(&mut events, i as i64, tempo, 1);
+            // check if we have a note on
+            if let Some(ev) = events.get(&0) {
+                for ev in ev.iter() {
+                    match ev {
+                        ScheduledEvent::NoteOn {
+                            time,
+                            pitch: _,
+                            velocity: _,
+                            param1: _,
+                            param2: _,
+                        } => {
+                            println!("time: {}", time);
+                            assert_eq!(*time, i as i32);
+                        }
+                        _ => (), // ignore note offs,
+                    }
+                }
             }
         }
     }

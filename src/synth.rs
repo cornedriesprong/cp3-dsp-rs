@@ -11,7 +11,7 @@ pub trait SynthVoice {
     fn set_parameter(&mut self, parameter: i8, value: f32);
     fn reset(&mut self);
     fn is_active(&self) -> bool;
-    fn process(&mut self, buf: &mut [f32]);
+    fn process(&mut self) -> f32;
 }
 
 pub struct Synth<V: SynthVoice> {
@@ -57,18 +57,12 @@ impl<V: SynthVoice> Synth<V> {
         }
     }
 
-    pub fn process(&mut self, buf_l: &mut [f32], buf_r: &mut [f32]) {
-        assert_eq!(
-            buf_l.len(),
-            buf_r.len(),
-            "Left and right buffers must be the same length"
-        );
-
+    pub fn process(&mut self) -> f32 {
+        let mut mix = 0.0;
         for voice in self.voices.iter_mut().filter(|v| v.is_active()) {
-            voice.process(buf_l);
+            mix += voice.process();
         }
-
-        buf_r.copy_from_slice(buf_l);
+        mix / VOICE_COUNT as f32
 
         // TODO: mix in reverb
         // *l = mix + (self.rev_l.process(mix) * self.rev_level);

@@ -1,5 +1,5 @@
 [package]
-name = "cp3-dsp"
+name = "cp3_dsp"
 version = "0.1.0"
 edition = "2021"
 authors = ["Corné Driesprong <corne@cp3.io>"]
@@ -16,4 +16,4 @@ rusty_link = "0.4.3"
 
 [lib]
 name = "cp3_dsp"
-crate-type = ["staticlib"]
+crate-type = ["rlib", "staticlib"]

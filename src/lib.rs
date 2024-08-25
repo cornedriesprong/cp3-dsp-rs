@@ -55,7 +55,7 @@ pub extern "C" fn set_note_played_callback(callback: NotePlayedCallback) {
 }
 
 #[no_mangle]
-pub extern "C" fn engine_init() -> *mut Engine {
+pub extern "C" fn engine_init() -> *mut Engine<'static> {
     let rx = get_receiver();
     let engine = Engine::new(rx);
     Box::into_raw(Box::new(engine))
