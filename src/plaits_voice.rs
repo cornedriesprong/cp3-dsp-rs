@@ -1,8 +1,8 @@
+use crate::filters::SVF;
 use crate::synth::SynthVoice;
 use crate::utils::pitch_to_freq;
 use mi_plaits_dsp::dsp::drums::{analog_bass_drum, analog_snare_drum, hihat};
 use mi_plaits_dsp::dsp::envelope::DecayEnvelope;
-use mi_plaits_dsp::dsp::fx::low_pass_gate::LowPassGate;
 use mi_plaits_dsp::dsp::oscillator;
 use mi_plaits_dsp::dsp::voice::{Modulations, Patch, Voice};
 
@@ -116,8 +116,7 @@ impl SynthVoice for PlaitsVoice<'_> {
 pub struct PlaitsOscillator {
     osc: oscillator::variable_saw_oscillator::VariableSawOscillator,
     env: DecayEnvelope,
-    // env: LpgEnvelope,
-    lpg: LowPassGate,
+    filter: SVF,
     frequency: f32,
     pulse_width: f32,
     waveshape: f32,
@@ -131,7 +130,7 @@ impl SynthVoice for PlaitsOscillator {
             osc: oscillator::variable_saw_oscillator::VariableSawOscillator::new(),
             env: DecayEnvelope::new(),
             // env: LpgEnvelope::new(),
-            lpg: LowPassGate::new(),
+            filter: SVF::new(1000.0, 1.717, sample_rate),
             frequency: 50.0 / sample_rate,
             pulse_width: 0.5,
             waveshape: 0.5,
@@ -143,7 +142,7 @@ impl SynthVoice for PlaitsOscillator {
     fn init(&mut self) {
         self.osc.init();
         self.env.init();
-        self.lpg.init();
+        // self.lpg.init();
     }
 
     #[inline]
@@ -154,13 +153,7 @@ impl SynthVoice for PlaitsOscillator {
         self.trigger = false;
 
         self.env.process(0.0002);
-        // self.env.process_lp(level, short_decay, decay_tail, hf)
-        // self.env.process_ping(0.1, 5.5, 2.5, 1000.0);
-        // self.env.process_lp(0.5, 0.1, 2.5, 1000.0);
-        self.lpg
-            .process_replacing(self.env.value(), 100.0, 0.0, &mut buf);
-
-        buf[0] * 0.2
+        self.filter.process(buf[0]) * self.env.value() * 0.5
     }
 
     fn play(&mut self, pitch: u8, velocity: u8, _: f32, _: f32) {
@@ -177,6 +170,8 @@ impl SynthVoice for PlaitsOscillator {
         match parameter {
             0 => self.pulse_width = value,
             1 => self.waveshape = value,
+            2 => self.filter.set_frequency(value * 10000.0, self.sample_rate),
+            3 => self.filter.set_q(value * 10.0),
             _ => (),
         }
     }

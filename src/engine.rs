@@ -1,5 +1,7 @@
 use crate::delay::Delay;
-use crate::plaits_voice::{PlaitsDrums, PlaitsOscillator, PlaitsVoice};
+use crate::karplus::KarplusVoice;
+use crate::limiter::Limiter;
+use crate::plaits_voice::{PlaitsDrums, PlaitsOscillator};
 use crate::reverb::Reverb;
 use crate::sequencer::{ScheduledEvent, Sequencer};
 use crate::synth::SynthVoice;
@@ -7,27 +9,29 @@ use crate::{Message, NOTE_CALLBACK};
 use crossbeam::channel::Receiver;
 use std::collections::HashMap;
 
-pub struct Engine<'a> {
+pub struct Engine {
     pub is_playing: bool,
     sequencer: Sequencer,
     synth: PlaitsOscillator,
-    voice: PlaitsVoice<'a>,
+    string: KarplusVoice,
     drums: PlaitsDrums,
     reverb: Reverb,
     delay: Delay,
+    limiter: Limiter,
     rx: Receiver<Message>,
 }
 
-impl Engine<'_> {
+impl Engine {
     pub fn new(rx: Receiver<Message>, sample_rate: f32) -> Self {
         Engine {
             is_playing: true,
             sequencer: Sequencer::new(4., sample_rate),
             synth: PlaitsOscillator::new(sample_rate),
-            voice: PlaitsVoice::new(sample_rate),
+            string: KarplusVoice::new(sample_rate),
             drums: PlaitsDrums::new(sample_rate),
             reverb: Reverb::new(sample_rate),
             delay: Delay::new(sample_rate * 0.5, 0.5),
+            limiter: Limiter::new(0.1, 0.5, 0.5, sample_rate),
             rx,
         }
     }
@@ -68,10 +72,17 @@ impl Engine<'_> {
                                     self.drums
                                         .play(*pitch as u8, *velocity as u8, *param1, *param2)
                                 }
-                                _ => {
+                                1 => {
                                     self.synth
                                         .play(*pitch as u8, *velocity as u8, *param1, *param2)
                                 }
+                                2 => self.string.play(
+                                    *pitch as u8,
+                                    *velocity as u8,
+                                    *param1,
+                                    *param2,
+                                ),
+                                _ => (),
                             }
                         }
                         ScheduledEvent::NoteOff {
@@ -89,10 +100,15 @@ impl Engine<'_> {
             let mut mix = 0.0;
             mix += self.drums.process();
             mix += self.synth.process();
+            mix += self.string.process();
+
+            mix /= 3.0;
 
             let reverb = self.reverb.process(mix);
             let delay = self.delay.tick(mix);
             mix += (reverb * 0.1) + (delay * 0.5);
+
+            mix = self.limiter.process(mix);
 
             buf_l[frame as usize] = mix;
             buf_r[frame as usize] = mix;
@@ -102,7 +118,9 @@ impl Engine<'_> {
     pub fn note_on(&mut self, pitch: u8, velocity: u8, track: i8, param1: f32, param2: f32) {
         match track {
             0 => self.drums.play(pitch, velocity, param1, param2),
-            _ => self.synth.play(pitch, velocity, param1, param2),
+            1 => self.synth.play(pitch, velocity, param1, param2),
+            2 => self.string.play(pitch, velocity, param1, param2),
+            _ => (),
         }
     }
 
@@ -122,6 +140,7 @@ impl Engine<'_> {
                 Message::ParameterChange(parameter, value, track) => match track {
                     0 => self.drums.set_parameter(parameter, value),
                     1 => self.synth.set_parameter(parameter, value),
+                    2 => self.string.set_parameter(parameter, value),
                     _ => (),
                 },
             }

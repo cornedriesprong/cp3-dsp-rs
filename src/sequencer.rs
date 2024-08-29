@@ -166,8 +166,6 @@ impl Sequencer {
 
 #[cfg(test)]
 mod tests {
-    use rand::seq;
-
     use super::*;
 
     #[test]

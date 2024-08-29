@@ -63,38 +63,37 @@ impl SynthVoice for KarplusVoice {
 
     #[inline]
     fn process(&mut self) -> f32 {
-        todo!()
-        // if !self.is_active() {
-        //     return 0.0;
-        // }
-        // // increment read position
-        // // TODO: is it a problem that we're rounding here?
-        // // should we interpolate between buffer values?
-        // self.read_pos = (self.read_pos + 1) % self.period as usize;
+        if !self.is_active() {
+            return 0.0;
+        }
+        // increment read position
+        // TODO: is it a problem that we're rounding here?
+        // should we interpolate between buffer values?
+        self.read_pos = (self.read_pos + 1) % self.period as usize;
 
-        // // smooth signal using simple averaging
-        // // try more advanced filter
-        // let mut sum = 0.0;
-        // // let window = 10.0;
-        // let mut window = self.damping.powf(2.0);
-        // window = (2.0 as f32).max(window * self.pitch_track);
-        // for i in 0..window as usize {
-        //     let idx = (self.read_pos + i) % self.period as usize;
-        //     sum += self.buffer[idx];
-        // }
-        // self.buffer[self.read_pos] = sum * (1.0 / window);
+        // smooth signal using simple averaging
+        // try more advanced filter
+        let mut sum = 0.0;
+        // let window = 10.0;
+        let mut window = self.damping.powf(2.0);
+        window = (2.0 as f32).max(window * self.pitch_track);
+        for i in 0..window as usize {
+            let idx = (self.read_pos + i) % self.period as usize;
+            sum += self.buffer[idx];
+        }
+        self.buffer[self.read_pos] = sum * (1.0 / window);
 
-        // if self.is_stopped {
-        //     // fade out note
-        //     self.buffer[self.read_pos] *= 0.9;
-        // }
+        if self.is_stopped {
+            // fade out note
+            self.buffer[self.read_pos] *= 0.9;
+        }
 
-        // self.buffer[self.read_pos]
+        self.buffer[self.read_pos]
     }
 
     fn play(&mut self, pitch: u8, velocity: u8, param1: f32, param2: f32) {
-        self.tone = param1;
-        self.damping = param2;
+        // self.tone = param1;
+        // self.damping = param2;
 
         self.is_stopped = false;
         let freq = pitch_to_freq(pitch);
@@ -127,7 +126,11 @@ impl SynthVoice for KarplusVoice {
     }
 
     fn set_parameter(&mut self, parameter: i8, value: f32) {
-        todo!()
+        match parameter {
+            0 => self.tone = value,
+            1 => self.damping = value,
+            _ => (),
+        }
     }
 
     fn get_pitch(&self) -> u8 {
