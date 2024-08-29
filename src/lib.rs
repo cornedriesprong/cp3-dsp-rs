@@ -25,7 +25,7 @@ pub mod utils;
 // Callback type definition
 type PlaybackProgressCallback = extern "C" fn(f32);
 
-type NotePlayedCallback = extern "C" fn(bool, i8);
+type NotePlayedCallback = extern "C" fn(bool, i8, i8);
 
 lazy_static! {
     static ref CHANNEL: Mutex<(channel::Sender<Message>, channel::Receiver<Message>)> =
@@ -55,10 +55,19 @@ pub extern "C" fn set_note_played_callback(callback: NotePlayedCallback) {
 }
 
 #[no_mangle]
-pub extern "C" fn engine_init() -> *mut Engine<'static> {
+pub extern "C" fn engine_init(sample_rate: f32) -> *mut Engine<'static> {
     let rx = get_receiver();
-    let engine = Engine::new(rx);
+    let engine = Engine::new(rx, sample_rate);
     Box::into_raw(Box::new(engine))
+}
+
+#[no_mangle]
+pub extern "C" fn set_play_pause(engine: *mut Engine, is_playing: bool) {
+    let engine = unsafe {
+        assert!(!engine.is_null());
+        &mut *engine
+    };
+    engine.is_playing = is_playing;
 }
 
 #[no_mangle]
@@ -67,6 +76,7 @@ pub extern "C" fn add_event(
     pitch: i8,
     velocity: i8,
     duration: f32,
+    track: i8,
     param1: f32,
     param2: f32,
 ) {
@@ -76,6 +86,7 @@ pub extern "C" fn add_event(
         pitch,
         velocity,
         duration,
+        track,
         param1,
         param2,
     };
@@ -83,33 +94,40 @@ pub extern "C" fn add_event(
 }
 
 #[no_mangle]
-pub extern "C" fn note_on(engine: *mut Engine, pitch: i8, velocity: i8, param1: f32, param2: f32) {
+pub extern "C" fn note_on(
+    engine: *mut Engine,
+    pitch: i8,
+    velocity: i8,
+    track: i8,
+    param1: f32,
+    param2: f32,
+) {
     let engine = unsafe {
         assert!(!engine.is_null());
         &mut *engine
     };
-    engine.note_on(pitch as u8, velocity as u8, param1, param2);
+    engine.note_on(pitch as u8, velocity as u8, track, param1, param2);
 }
 
 #[no_mangle]
-pub extern "C" fn note_off(engine: *mut Engine, pitch: i8) {
+pub extern "C" fn note_off(engine: *mut Engine, pitch: i8, track: i8) {
     let engine = unsafe {
         assert!(!engine.is_null());
         &mut *engine
     };
-    engine.note_off(pitch as u8);
+    engine.note_off(pitch as u8, track);
 }
 
 #[no_mangle]
-pub extern "C" fn set_sound(engine: *mut Engine, sound: i8) {
+pub extern "C" fn set_sound(engine: *mut Engine, sound: i8, track: i8) {
     todo!();
 }
 
 #[no_mangle]
-pub extern "C" fn set_parameter(parameter: i8, value: f32) {
+pub extern "C" fn set_parameter(parameter: i8, value: f32, track: i8) {
     let sender = get_sender();
     sender
-        .send(Message::ParameterChange(parameter, value))
+        .send(Message::ParameterChange(parameter, value, track))
         .unwrap();
 }
 

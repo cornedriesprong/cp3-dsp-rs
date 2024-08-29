@@ -13,14 +13,14 @@ struct ReverbPath {
 }
 
 impl ReverbPath {
-    fn new() -> Self {
+    fn new(sample_rate: f32) -> Self {
         let mut rng = thread_rng();
         let delay_time = rng.gen_range(10..10000);
         let is_inverted = rng.gen_bool(1.0 / 3.0);
 
         Self {
             delay_line: DelayLine::new(InterpolationType::None, delay_time),
-            svf: SVF::new(5000.0, 0.707),
+            svf: SVF::new(5000.0, 0.707, sample_rate),
             delay_time: delay_time as i32,
             is_inverted,
             feedback: 0.9,
@@ -63,11 +63,13 @@ pub struct Reverb {
 }
 
 impl Reverb {
-    pub fn new() -> Self {
+    pub fn new(sample_rate: f32) -> Self {
         let allpasses = (0..ALLPASS_COUNT)
             .map(|i| AllPass::new(ALLPASS_LENGTHS[i]))
             .collect();
-        let paths = (0..DELAY_COUNT).map(|_| ReverbPath::new()).collect();
+        let paths = (0..DELAY_COUNT)
+            .map(|_| ReverbPath::new(sample_rate))
+            .collect();
         Self { allpasses, paths }
     }
     #[inline]
@@ -111,7 +113,8 @@ mod tests {
 
     #[test]
     fn test_reverb() {
-        let mut reverb = Reverb::new();
+        let sample_rate = 48000.0;
+        let mut reverb = Reverb::new(sample_rate);
         for i in IMPULSE_SIGNAL.iter() {
             let y = reverb.process(*i);
             println!("y: {}", y);

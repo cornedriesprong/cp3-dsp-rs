@@ -1,7 +1,6 @@
 //! Constants
 
 // TODO: don't hardcode sample rate
-pub const SAMPLE_RATE: f32 = 48000.0;
 pub const A4_FREQ: f32 = 440.0;
 pub const A4_MIDI: u8 = 69;
 

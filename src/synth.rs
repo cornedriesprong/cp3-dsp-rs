@@ -3,7 +3,7 @@ use crate::reverb::Reverb;
 pub const VOICE_COUNT: usize = 1;
 
 pub trait SynthVoice {
-    fn new() -> Self;
+    fn new(sample_rate: f32) -> Self;
     fn init(&mut self);
     fn get_pitch(&self) -> u8;
     fn play(&mut self, pitch: u8, velocity: u8, param1: f32, param2: f32);
@@ -26,8 +26,9 @@ pub struct Synth<V: SynthVoice> {
 impl<V: SynthVoice> Synth<V> {
     pub fn new() -> Self {
         let mut voices = Vec::new();
+        let sample_rate = 48000.0;
         for _ in 0..VOICE_COUNT {
-            let mut voice = V::new();
+            let mut voice = V::new(sample_rate);
             voice.init();
             voices.push(voice);
         }
@@ -35,8 +36,8 @@ impl<V: SynthVoice> Synth<V> {
         Self {
             voices,
             current_voice_index: 0,
-            rev_l: Reverb::new(),
-            rev_r: Reverb::new(),
+            rev_l: Reverb::new(sample_rate),
+            rev_r: Reverb::new(sample_rate),
             rev_level: 1.0,
         }
     }

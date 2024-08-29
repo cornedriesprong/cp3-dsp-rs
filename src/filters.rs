@@ -1,6 +1,5 @@
 //! Various types of filters
 
-use crate::consts::SAMPLE_RATE;
 use crate::delay::{DelayLine, InterpolationType};
 use std::f32::consts::PI;
 
@@ -52,11 +51,16 @@ impl FIRFilter {
 pub struct OnePoleLPF {
     alpha: f32,
     z: f32, // 1 sample delay register: z^-1
+    sample_rate: f32,
 }
 
 impl OnePoleLPF {
-    pub fn new(alpha: f32) -> OnePoleLPF {
-        OnePoleLPF { z: 0.0, alpha }
+    pub fn new(alpha: f32, sample_rate: f32) -> Self {
+        Self {
+            z: 0.0,
+            alpha,
+            sample_rate,
+        }
     }
 
     #[inline]
@@ -65,12 +69,12 @@ impl OnePoleLPF {
         self.z
     }
 
-    pub fn set_frequency(&mut self, freq: f32) {
-        self.alpha = Self::calculate_alpha(freq);
+    pub fn set_frequency(&mut self, freq: f32, sample_rate: i32) {
+        self.alpha = Self::calculate_alpha(freq, sample_rate);
     }
 
-    fn calculate_alpha(freq: f32) -> f32 {
-        1.0 / (1.0 + PI * freq / SAMPLE_RATE)
+    fn calculate_alpha(freq: f32, sample_rate: i32) -> f32 {
+        1.0 / (1.0 + PI * freq / sample_rate as f32)
     }
 }
 
@@ -87,7 +91,7 @@ pub struct SVF {
 }
 
 impl SVF {
-    pub fn new(freq: f32, q: f32) -> SVF {
+    pub fn new(freq: f32, q: f32, sample_rate: f32) -> SVF {
         let mut svf = SVF {
             g: 0.0,
             k: 0.0,
@@ -97,7 +101,7 @@ impl SVF {
             ic1eq: 0.0,
             ic2eq: 0.0,
         };
-        svf.set_frequency(freq);
+        svf.set_frequency(freq, sample_rate);
         svf.set_q(q);
         svf
     }
@@ -113,8 +117,8 @@ impl SVF {
         v2 // return lowpass
     }
 
-    pub fn set_frequency(&mut self, freq: f32) {
-        self.g = (std::f32::consts::PI * freq / SAMPLE_RATE).tan();
+    pub fn set_frequency(&mut self, freq: f32, sample_rate: f32) {
+        self.g = (std::f32::consts::PI * freq / sample_rate).tan();
         self.update_coefficients();
     }
 
@@ -268,7 +272,8 @@ mod tests {
             .collect::<Vec<f32>>();
 
         // perform FFT to get frequency and response from impulse response
-        let fft_size = (SAMPLE_RATE as usize).next_power_of_two();
+        let sample_rate = 48000;
+        let fft_size = (sample_rate as usize).next_power_of_two();
         let fft = Radix4::new(fft_size, Forward);
         let mut buffer: Vec<Complex<f32>> = ir.iter().map(|&x| Complex::new(x, 0.0)).collect();
         buffer.resize(fft_size, Complex::zero());

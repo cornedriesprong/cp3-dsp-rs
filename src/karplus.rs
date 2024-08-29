@@ -1,4 +1,3 @@
-use crate::consts::SAMPLE_RATE;
 use crate::synth::SynthVoice;
 use crate::utils::{freq_to_period, pitch_to_freq};
 use rand::Rng;
@@ -21,6 +20,7 @@ pub struct KarplusVoice {
     read_pos: usize,
     pitch_track: f32,
     is_stopped: bool,
+    sample_rate: f32,
 }
 
 impl KarplusVoice {
@@ -37,7 +37,7 @@ impl KarplusVoice {
 }
 
 impl SynthVoice for KarplusVoice {
-    fn new() -> Self {
+    fn new(sample_rate: f32) -> Self {
         Self {
             // mode: Mode::String,
             tone: 0.5,
@@ -47,6 +47,7 @@ impl SynthVoice for KarplusVoice {
             read_pos: 0,
             pitch_track: 0.0,
             is_stopped: true,
+            sample_rate,
         }
     }
 
@@ -97,7 +98,7 @@ impl SynthVoice for KarplusVoice {
 
         self.is_stopped = false;
         let freq = pitch_to_freq(pitch);
-        self.period = freq_to_period(SAMPLE_RATE, freq);
+        self.period = freq_to_period(self.sample_rate, freq);
         self.read_pos = 0;
 
         self.pitch_track = (5.0 as f32).max(self.period / 7.0);

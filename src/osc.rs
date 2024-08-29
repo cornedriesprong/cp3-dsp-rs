@@ -1,4 +1,4 @@
-use crate::consts::{A4_FREQ, SAMPLE_RATE};
+use crate::consts::A4_FREQ;
 use std::f32::consts::{FRAC_PI_4, PI};
 extern crate rand;
 
@@ -17,10 +17,11 @@ pub struct BlitSawOsc {
     dsin: f32,
     dc: f32,
     saw: f32,
+    sample_rate: f32,
 }
 
 impl BlitSawOsc {
-    pub fn new() -> Self {
+    pub fn new(sample_rate: f32) -> Self {
         Self {
             period: 0.0,
             amplitude: 1.0,
@@ -32,6 +33,7 @@ impl BlitSawOsc {
             dsin: 0.0,
             dc: 0.0,
             saw: 0.0,
+            sample_rate,
         }
     }
 
@@ -53,7 +55,7 @@ impl BlitSawOsc {
     }
 
     pub fn set_freq(&mut self, freq: f32) {
-        self.period = SAMPLE_RATE / freq;
+        self.period = self.sample_rate / freq;
     }
 
     fn next_sample(&mut self) -> f32 {
@@ -110,15 +112,17 @@ pub struct Osc {
     phase: f32,
     increment: f32,
     // rng: rand::rngs::ThreadRng,
+    sample_rate: f32,
 }
 
 impl Osc {
-    pub fn new(waveform: Waveform) -> Self {
+    pub fn new(waveform: Waveform, sample_rate: f32) -> Self {
         Self {
             waveform,
             phase: 0.0,
-            increment: A4_FREQ / SAMPLE_RATE, // default to 440 Hz
-                                              // rng: rand::thread_rng(),
+            increment: A4_FREQ / sample_rate, // default to 440 Hz
+            // rng: rand::thread_rng(),
+            sample_rate,
         }
     }
 
@@ -135,7 +139,7 @@ impl Osc {
     }
 
     pub fn set_freq(&mut self, freq: f32) {
-        self.increment = freq / SAMPLE_RATE;
+        self.increment = freq / self.sample_rate;
     }
 
     fn generate_waveform(&mut self) -> f32 {
@@ -165,15 +169,17 @@ mod tests {
     #[test]
     fn create_osc() {
         let rate = 440.0;
-        let osc = Osc::new(Waveform::Sine);
+        let sample_rate = 48000.0;
+        let osc = Osc::new(Waveform::Sine, sample_rate);
 
         assert_eq!(osc.phase, 0.0);
-        assert_eq!(osc.increment, rate / SAMPLE_RATE);
+        assert_eq!(osc.increment, rate / sample_rate);
     }
 
     #[test]
     fn generate_waveform() {
-        let mut osc = Osc::new(Waveform::Sine);
+        let sample_rate = 48000.0;
+        let mut osc = Osc::new(Waveform::Sine, sample_rate);
         let output = osc.process();
 
         assert!(output >= -1.0 && output <= 1.0);
@@ -181,7 +187,8 @@ mod tests {
 
     #[test]
     fn create_blit_osc() {
-        let osc = BlitSawOsc::new();
+        let sample_rate = 48000.0;
+        let osc = BlitSawOsc::new(sample_rate);
         assert_eq!(osc.period, 0.0);
         assert_eq!(osc.amplitude, 1.0);
         assert_eq!(osc.phase, 0.0);
@@ -196,7 +203,8 @@ mod tests {
 
     #[test]
     fn blit_generate_waveform() {
-        let mut osc = BlitSawOsc::new();
+        let sample_rate = 48000.0;
+        let mut osc = BlitSawOsc::new(sample_rate);
         osc.set_freq(440.0);
         // generate 1st 100 samples
         for _ in 0..100 {
@@ -207,7 +215,8 @@ mod tests {
 
     #[test]
     fn blit_reset() {
-        let mut osc = BlitSawOsc::new();
+        let sample_rate = 48000.0;
+        let mut osc = BlitSawOsc::new(sample_rate);
         osc.set_freq(440.0);
         osc.process();
         osc.reset();
@@ -222,14 +231,16 @@ mod tests {
 
     #[test]
     fn blit_set_freq() {
-        let mut osc = BlitSawOsc::new();
+        let sample_rate = 48000.0;
+        let mut osc = BlitSawOsc::new(sample_rate);
         osc.set_freq(440.0);
-        assert_eq!(osc.period, SAMPLE_RATE / 440.0);
+        assert_eq!(osc.period, sample_rate / 440.0);
     }
 
     #[test]
     fn plot_blit_saw() {
-        let mut osc = BlitSawOsc::new();
+        let sample_rate = 48000.0;
+        let mut osc = BlitSawOsc::new(sample_rate);
         osc.set_freq(440.0);
         let mut xs = Vec::new();
         let mut ys = Vec::new();

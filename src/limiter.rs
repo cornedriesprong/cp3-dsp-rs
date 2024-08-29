@@ -1,5 +1,3 @@
-use crate::consts::SAMPLE_RATE;
-
 /*
   adapted from https://www.musicdsp.org/en/latest/Filters/265-output-limiter-using-envelope-follower-in-c.html
   not actually sure if it works as it should
@@ -8,13 +6,15 @@ use crate::consts::SAMPLE_RATE;
 pub struct Limiter {
     threshold: f32,
     env_follower: EnvelopeFollower,
+    sample_rate: f32,
 }
 
 impl Limiter {
-    pub fn new(attack: f32, release: f32, threshold: f32) -> Self {
+    pub fn new(attack: f32, release: f32, threshold: f32, sample_rate: f32) -> Self {
         Self {
             threshold,
-            env_follower: EnvelopeFollower::new(attack, release),
+            env_follower: EnvelopeFollower::new(attack, release, sample_rate),
+            sample_rate,
         }
     }
 
@@ -36,11 +36,11 @@ struct EnvelopeFollower {
 }
 
 impl EnvelopeFollower {
-    pub fn new(attack: f32, release: f32) -> Self {
+    pub fn new(attack: f32, release: f32, sample_rate: f32) -> Self {
         Self {
             // makes attack and release curves exponential?
-            attack: (0.01 as f32).powf(1.0 / (attack * SAMPLE_RATE * 0.001)),
-            release: (0.01 as f32).powf(1.0 / (release * SAMPLE_RATE * 0.001)),
+            attack: (0.01 as f32).powf(1.0 / (attack * sample_rate * 0.001)),
+            release: (0.01 as f32).powf(1.0 / (release * sample_rate * 0.001)),
             env: 0.0,
         }
     }
@@ -65,7 +65,8 @@ mod tests {
         let attack = 0.5;
         let release = 0.5;
         let threshold = 0.5;
-        let limiter = Limiter::new(attack, release, threshold);
+        let sample_rate = 48000.0;
+        let limiter = Limiter::new(attack, release, threshold, sample_rate);
 
         assert_eq!(limiter.threshold, 0.5);
     }
@@ -75,7 +76,8 @@ mod tests {
         let attack = 0.0;
         let release = 0.0;
         let threshold = 0.1;
-        let mut limiter = Limiter::new(attack, release, threshold);
+        let sample_rate = 48000.0;
+        let mut limiter = Limiter::new(attack, release, threshold, sample_rate);
 
         // should limit value
         assert_eq!(limiter.process(1.0), 1.0);
@@ -90,7 +92,8 @@ mod tests {
     fn creates_new_envelope_follower() {
         let attack = 0.5;
         let release = 0.5;
-        let limiter = EnvelopeFollower::new(attack, release);
+        let sample_rate = 48000.0;
+        let limiter = EnvelopeFollower::new(attack, release, sample_rate);
 
         assert_eq!(limiter.attack, 0.82540417);
         assert_eq!(limiter.release, 0.82540417);

@@ -1,9 +1,9 @@
-use crate::consts::SAMPLE_RATE;
-use crate::delay::{self, Delay};
-use crate::reverb::Reverb;
 use crate::synth::SynthVoice;
 use crate::utils::pitch_to_freq;
 use mi_plaits_dsp::dsp::drums::{analog_bass_drum, analog_snare_drum, hihat};
+use mi_plaits_dsp::dsp::envelope::DecayEnvelope;
+use mi_plaits_dsp::dsp::fx::low_pass_gate::LowPassGate;
+use mi_plaits_dsp::dsp::oscillator;
 use mi_plaits_dsp::dsp::voice::{Modulations, Patch, Voice};
 
 const BLOCK_SIZE: usize = 1;
@@ -12,6 +12,7 @@ pub struct PlaitsVoice<'a> {
     osc: Voice<'a>,
     patch: Patch,
     modulations: Modulations,
+    sample_rate: f32,
 }
 
 impl PlaitsVoice<'_> {
@@ -25,7 +26,7 @@ impl PlaitsVoice<'_> {
 }
 
 impl SynthVoice for PlaitsVoice<'_> {
-    fn new() -> Self {
+    fn new(sample_rate: f32) -> Self {
         Self {
             // TODO: don't hardcode block size
             osc: Voice::new(&std::alloc::System, BLOCK_SIZE),
@@ -37,7 +38,7 @@ impl SynthVoice for PlaitsVoice<'_> {
                 frequency_modulation_amount: 0.0,
                 timbre_modulation_amount: 0.5,
                 morph_modulation_amount: 0.5,
-                engine: 0,
+                engine: 12,
                 decay: 0.5,
                 lpg_colour: 0.5,
             },
@@ -56,6 +57,7 @@ impl SynthVoice for PlaitsVoice<'_> {
                 trigger_patched: true,
                 level_patched: false,
             },
+            sample_rate,
         }
     }
 
@@ -76,6 +78,7 @@ impl SynthVoice for PlaitsVoice<'_> {
     }
 
     fn play(&mut self, pitch: u8, velocity: u8, _: f32, _: f32) {
+        println!("playing note at pitch: {}", pitch);
         self.patch.note = pitch as f32;
         self.modulations.trigger = velocity as f32 / 127.0;
     }
@@ -110,6 +113,84 @@ impl SynthVoice for PlaitsVoice<'_> {
     }
 }
 
+pub struct PlaitsOscillator {
+    osc: oscillator::variable_saw_oscillator::VariableSawOscillator,
+    env: DecayEnvelope,
+    // env: LpgEnvelope,
+    lpg: LowPassGate,
+    frequency: f32,
+    pulse_width: f32,
+    waveshape: f32,
+    trigger: bool,
+    sample_rate: f32,
+}
+
+impl SynthVoice for PlaitsOscillator {
+    fn new(sample_rate: f32) -> Self {
+        Self {
+            osc: oscillator::variable_saw_oscillator::VariableSawOscillator::new(),
+            env: DecayEnvelope::new(),
+            // env: LpgEnvelope::new(),
+            lpg: LowPassGate::new(),
+            frequency: 50.0 / sample_rate,
+            pulse_width: 0.5,
+            waveshape: 0.5,
+            trigger: false,
+            sample_rate,
+        }
+    }
+
+    fn init(&mut self) {
+        self.osc.init();
+        self.env.init();
+        self.lpg.init();
+    }
+
+    #[inline]
+    fn process(&mut self) -> f32 {
+        let mut buf = [0.0; BLOCK_SIZE];
+        self.osc
+            .render(self.frequency, self.pulse_width, self.waveshape, &mut buf);
+        self.trigger = false;
+
+        self.env.process(0.0002);
+        // self.env.process_lp(level, short_decay, decay_tail, hf)
+        // self.env.process_ping(0.1, 5.5, 2.5, 1000.0);
+        // self.env.process_lp(0.5, 0.1, 2.5, 1000.0);
+        self.lpg
+            .process_replacing(self.env.value(), 100.0, 0.0, &mut buf);
+
+        buf[0] * 0.2
+    }
+
+    fn play(&mut self, pitch: u8, velocity: u8, _: f32, _: f32) {
+        self.frequency = pitch_to_freq(pitch) / self.sample_rate;
+        self.env.trigger();
+        self.trigger = true;
+    }
+
+    fn reset(&mut self) {}
+
+    fn stop(&mut self) {}
+
+    fn set_parameter(&mut self, parameter: i8, value: f32) {
+        match parameter {
+            0 => self.pulse_width = value,
+            1 => self.waveshape = value,
+            _ => (),
+        }
+    }
+
+    fn get_pitch(&self) -> u8 {
+        0
+    }
+
+    fn is_active(&self) -> bool {
+        // self.modulations.level > 0.0
+        true
+    }
+}
+
 pub struct PlaitsKick {
     osc: analog_bass_drum::AnalogBassDrum,
     frequency: f32,
@@ -119,10 +200,11 @@ pub struct PlaitsKick {
     attack_fm_amount: f32,
     self_fm_amount: f32,
     trigger: bool,
+    sample_rate: f32,
 }
 
 impl SynthVoice for PlaitsKick {
-    fn new() -> Self {
+    fn new(sample_rate: f32) -> Self {
         Self {
             osc: analog_bass_drum::AnalogBassDrum::new(),
             frequency: 50.0,
@@ -132,6 +214,7 @@ impl SynthVoice for PlaitsKick {
             attack_fm_amount: 0.0,
             self_fm_amount: 0.0,
             trigger: false,
+            sample_rate,
         }
     }
 
@@ -141,7 +224,7 @@ impl SynthVoice for PlaitsKick {
 
     #[inline]
     fn process(&mut self) -> f32 {
-        let f0 = self.frequency / SAMPLE_RATE;
+        let f0 = self.frequency / self.sample_rate;
 
         let mut buf = [0.0; BLOCK_SIZE];
         self.osc.render(
@@ -199,10 +282,11 @@ pub struct PlaitsSnare {
     decay: f32,
     snappy: f32,
     trigger: bool,
+    sample_rate: f32,
 }
 
 impl SynthVoice for PlaitsSnare {
-    fn new() -> Self {
+    fn new(sample_rate: f32) -> Self {
         Self {
             osc: analog_snare_drum::AnalogSnareDrum::new(),
             frequency: 50.0,
@@ -212,6 +296,7 @@ impl SynthVoice for PlaitsSnare {
             decay: 0.5,
             snappy: 0.5,
             trigger: false,
+            sample_rate,
         }
     }
 
@@ -221,7 +306,7 @@ impl SynthVoice for PlaitsSnare {
 
     #[inline]
     fn process(&mut self) -> f32 {
-        let f0 = self.frequency / SAMPLE_RATE;
+        let f0 = self.frequency / self.sample_rate;
         let mut buf = [0.0; BLOCK_SIZE];
 
         self.osc.render(
@@ -277,10 +362,11 @@ pub struct PlaitsHihat {
     decay: f32,
     noisiness: f32,
     trigger: bool,
+    sample_rate: f32,
 }
 
 impl SynthVoice for PlaitsHihat {
-    fn new() -> Self {
+    fn new(sample_rate: f32) -> Self {
         Self {
             osc: hihat::Hihat::new(),
             frequency: 50.0,
@@ -290,6 +376,7 @@ impl SynthVoice for PlaitsHihat {
             decay: 0.2,
             noisiness: 0.5,
             trigger: false,
+            sample_rate,
         }
     }
 
@@ -299,7 +386,7 @@ impl SynthVoice for PlaitsHihat {
 
     #[inline]
     fn process(&mut self) -> f32 {
-        let f0 = self.frequency / SAMPLE_RATE;
+        let f0 = self.frequency / self.sample_rate;
         let mut buf = [0.0; BLOCK_SIZE];
         let mut temp_1 = [0.0; BLOCK_SIZE];
         let mut temp_2 = [0.0; BLOCK_SIZE];
@@ -359,18 +446,14 @@ pub struct PlaitsDrums {
     kick: PlaitsKick,
     snare: PlaitsSnare,
     hihat: PlaitsHihat,
-    reverb: Reverb,
-    delay: Delay,
 }
 
 impl SynthVoice for PlaitsDrums {
-    fn new() -> Self {
+    fn new(sample_rate: f32) -> Self {
         Self {
-            kick: PlaitsKick::new(),
-            snare: PlaitsSnare::new(),
-            hihat: PlaitsHihat::new(),
-            reverb: Reverb::new(),
-            delay: Delay::new(SAMPLE_RATE * (1.0 / 3.0), 0.5),
+            kick: PlaitsKick::new(sample_rate),
+            snare: PlaitsSnare::new(sample_rate),
+            hihat: PlaitsHihat::new(sample_rate),
         }
     }
 
@@ -389,10 +472,7 @@ impl SynthVoice for PlaitsDrums {
 
         mix /= 3.0;
 
-        let reverb = self.reverb.process(mix);
-        let delay = self.delay.tick(mix);
-
-        mix + (reverb * 0.1) + (delay * 0.5)
+        mix
     }
 
     fn play(&mut self, pitch: u8, velocity: u8, _: f32, _: f32) {

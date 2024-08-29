@@ -1,4 +1,3 @@
-use crate::consts::SAMPLE_RATE;
 use crate::utils::{lerp, xerp};
 
 pub enum EnvelopeState {
@@ -24,10 +23,11 @@ pub struct AR {
     velocity: f32,
     state: EnvelopeState,
     curve_type: CurveType,
+    sample_rate: f32,
 }
 
 impl AR {
-    pub fn new(attack_ms: f32, release_ms: f32, curve_type: CurveType) -> Self {
+    pub fn new(attack_ms: f32, release_ms: f32, curve_type: CurveType, sample_rate: f32) -> Self {
         let ar = AR {
             attack_ms,
             release_ms,
@@ -36,6 +36,7 @@ impl AR {
             velocity: 1.0,
             state: EnvelopeState::Off,
             curve_type,
+            sample_rate,
         };
 
         ar
@@ -56,7 +57,7 @@ impl AR {
         use EnvelopeState as E;
         match self.state {
             E::Attack => {
-                let length = self.attack_ms * (SAMPLE_RATE / 1000.0);
+                let length = self.attack_ms * (self.sample_rate / 1000.0);
                 if length == 0.0 {
                     self.delta = 1.0;
                 } else {
@@ -70,7 +71,7 @@ impl AR {
                 }
             }
             E::Release => {
-                let length = self.release_ms * (SAMPLE_RATE / 1000.0);
+                let length = self.release_ms * (self.sample_rate / 1000.0);
                 self.delta = self.get_curve_rev(length) * self.velocity;
                 if self.delta <= 0.0 {
                     self.delta = 0.0;
@@ -118,7 +119,13 @@ mod tests {
     fn creates_new_ar_envelope() {
         let attack = 10.0;
         let release = 500.0;
-        let ar = AR::new(attack, release, CurveType::Exponential { pow: 2 });
+        let sample_rate = 48000.0;
+        let ar = AR::new(
+            attack,
+            release,
+            CurveType::Exponential { pow: 2 },
+            sample_rate,
+        );
 
         assert_eq!(ar.attack_ms, attack);
         assert_eq!(ar.release_ms, release);
@@ -128,7 +135,8 @@ mod tests {
     fn test_lin_attack() {
         let attack_ms = 10.0;
         let release_ms = 500.0;
-        let mut ar = AR::new(attack_ms, release_ms, CurveType::Linear);
+        let sample_rate = 48000.0;
+        let mut ar = AR::new(attack_ms, release_ms, CurveType::Linear, sample_rate);
 
         ar.trigger(127);
         matches!(ar.state, EnvelopeState::Attack);
@@ -141,7 +149,13 @@ mod tests {
     fn test_exp_attack() {
         let attack = 10.0;
         let release = 500.0;
-        let mut ar = AR::new(attack, release, CurveType::Exponential { pow: 2 });
+        let sample_rate = 48000.0;
+        let mut ar = AR::new(
+            attack,
+            release,
+            CurveType::Exponential { pow: 2 },
+            sample_rate,
+        );
 
         ar.trigger(127);
         matches!(ar.state, EnvelopeState::Attack);
@@ -154,7 +168,8 @@ mod tests {
     fn test_lin_release() {
         let attack = 0.0;
         let release = 5.0;
-        let mut ar = AR::new(attack, release, CurveType::Linear);
+        let sample_rate = 48000.0;
+        let mut ar = AR::new(attack, release, CurveType::Linear, sample_rate);
 
         ar.trigger(127);
         matches!(ar.state, EnvelopeState::Release);
@@ -166,7 +181,13 @@ mod tests {
     fn test_exp_release() {
         let attack = 0.0;
         let release = 5.0;
-        let mut ar = AR::new(attack, release, CurveType::Exponential { pow: 2 });
+        let sample_rate = 48000.0;
+        let mut ar = AR::new(
+            attack,
+            release,
+            CurveType::Exponential { pow: 2 },
+            sample_rate,
+        );
 
         ar.trigger(127);
         matches!(ar.state, EnvelopeState::Release);
@@ -178,7 +199,13 @@ mod tests {
     fn test_is_active() {
         let attack = 1.0;
         let release = 1.0;
-        let mut ar = AR::new(attack, release, CurveType::Exponential { pow: 2 });
+        let sample_rate = 48000.0;
+        let mut ar = AR::new(
+            attack,
+            release,
+            CurveType::Exponential { pow: 2 },
+            sample_rate,
+        );
         assert_eq!(ar.is_active(), false);
 
         ar.trigger(127);

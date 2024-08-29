@@ -10,16 +10,18 @@ pub struct SubtractiveVoice {
     velocity: f32,
     filter: SVF,
     pitch: Option<u8>,
+    sample_rate: f32,
 }
 
 impl SynthVoice for SubtractiveVoice {
-    fn new() -> Self {
+    fn new(sample_rate: f32) -> Self {
         Self {
-            osc: BlitSawOsc::new(),
-            env: AR::new(0.0, 30000.0, CurveType::Exponential { pow: 8 }),
+            osc: BlitSawOsc::new(sample_rate),
+            env: AR::new(0.0, 30000.0, CurveType::Exponential { pow: 8 }, sample_rate),
             velocity: 1.0,
-            filter: SVF::new(5000.0, 0.707),
+            filter: SVF::new(5000.0, 0.707, sample_rate),
             pitch: None,
+            sample_rate,
         }
     }
 
@@ -40,7 +42,8 @@ impl SynthVoice for SubtractiveVoice {
     fn play(&mut self, pitch: u8, velocity: u8, param1: f32, param2: f32) {
         self.velocity = velocity as f32 / 128.0;
         self.pitch = Some(pitch);
-        self.filter.set_frequency(param1 * 10000.0);
+        self.filter
+            .set_frequency(param1 * 10000.0, self.sample_rate);
         self.filter.set_q(param2 * 20.0);
         let freq = pitch_to_freq(pitch);
         self.osc.reset(); // resetting the phase is optional!

@@ -1,4 +1,4 @@
-use crate::{consts::SAMPLE_RATE, PROGRESS_CALLBACK};
+use crate::PROGRESS_CALLBACK;
 use std::{collections::HashMap, usize};
 
 struct Sequence {
@@ -13,12 +13,13 @@ pub struct Event {
     pub velocity: i8,
     pub param1: f32,
     pub param2: f32,
+    pub track: i8,
     pub duration: f32,
 }
 
 pub enum Message {
     Schedule(Event),
-    ParameterChange(i8, f32),
+    ParameterChange(i8, f32, i8),
     Clear,
 }
 
@@ -28,28 +29,32 @@ pub enum ScheduledEvent {
         time: i32,
         pitch: i8,
         velocity: i8,
+        track: i8,
         param1: f32,
         param2: f32,
     },
     NoteOff {
         time: i32,
         pitch: i8,
+        track: i8,
     },
 }
 
 pub struct Sequencer {
     sequence: Sequence,
     scheduled_events: Vec<ScheduledEvent>,
+    sample_rate: f32,
 }
 
 impl Sequencer {
-    pub fn new(length: f32) -> Self {
+    pub fn new(length: f32, sample_rate: f32) -> Self {
         Sequencer {
             sequence: Sequence {
                 events: Vec::new(),
                 length,
             },
             scheduled_events: Vec::new(),
+            sample_rate,
         }
     }
 
@@ -60,15 +65,15 @@ impl Sequencer {
         tempo: f32,
         num_frames: i32,
     ) {
-        let length = Self::beat_to_sample(self.sequence.length, tempo);
+        let length = self.beat_to_sample(self.sequence.length, tempo);
         let buffer_start = (sample_time % length as i64) as i32;
         let buffer_end = buffer_start as i32 + num_frames;
 
-        let beat_time = Self::sample_to_beat(sample_time % length as i64, tempo);
+        let beat_time = self.sample_to_beat(sample_time % length as i64, tempo);
         Self::update_playback_progress(beat_time);
 
         for ev in &self.sequence.events {
-            let mut event_time = Self::beat_to_sample(ev.beat_time, tempo);
+            let mut event_time = self.beat_to_sample(ev.beat_time, tempo);
             let mut is_in_buffer = Self::is_in_buffer(event_time, buffer_start, buffer_end);
 
             // check if event loops around (ie, is in beginning of next buffer)
@@ -82,16 +87,18 @@ impl Sequencer {
                     time: event_time,
                     pitch: ev.pitch,
                     velocity: ev.velocity,
+                    track: ev.track,
                     param1: ev.param1,
                     param2: ev.param2,
                 };
                 // TODO: stop already playing notes at same pitch
                 self.scheduled_events.push(note_on);
 
-                let duration = Self::beat_to_sample(ev.duration, tempo);
+                let duration = self.beat_to_sample(ev.duration, tempo);
                 let note_off = ScheduledEvent::NoteOff {
                     time: (event_time + duration) % length,
                     pitch: ev.pitch,
+                    track: ev.track,
                 };
                 self.scheduled_events.push(note_off);
             }
@@ -132,12 +139,12 @@ impl Sequencer {
         }
     }
 
-    pub fn beat_to_sample(beat_time: f32, tempo: f32) -> i32 {
-        (beat_time / tempo * 60.0 * SAMPLE_RATE as f32) as i32
+    pub fn beat_to_sample(&self, beat_time: f32, tempo: f32) -> i32 {
+        (beat_time / tempo * 60.0 * self.sample_rate as f32) as i32
     }
 
-    pub fn sample_to_beat(sample_time: i64, tempo: f32) -> f32 {
-        sample_time as f32 / SAMPLE_RATE as f32 * tempo / 60.0
+    pub fn sample_to_beat(&self, sample_time: i64, tempo: f32) -> f32 {
+        sample_time as f32 / self.sample_rate as f32 * tempo / 60.0
     }
 
     fn is_in_buffer(time: i32, buffer_start: i32, buffer_end: i32) -> bool {
@@ -159,12 +166,15 @@ impl Sequencer {
 
 #[cfg(test)]
 mod tests {
+    use rand::seq;
+
     use super::*;
 
     #[test]
     fn new_creates_sequencer() {
         // let (_, rx) = channel::unbounded();
-        let sequencer = Sequencer::new(4.);
+        let sample_rate = 48000.0;
+        let sequencer = Sequencer::new(4., sample_rate);
         assert_eq!(sequencer.sequence.events.len(), 0);
         assert_eq!(sequencer.sequence.length, 4.);
     }
@@ -172,7 +182,8 @@ mod tests {
     #[test]
     fn add_event() {
         let length = 4.;
-        let mut sequencer = Sequencer::new(length);
+        let sample_rate = 48000.0;
+        let mut sequencer = Sequencer::new(length, sample_rate);
         let tempo = 120.0;
         let beat_time = 1.0;
         let duration = 1.0;
@@ -180,6 +191,7 @@ mod tests {
             beat_time,
             pitch: 60,
             velocity: 100,
+            track: 0,
             param1: 0.0,
             param2: 0.0,
             duration,
@@ -200,7 +212,8 @@ mod tests {
     #[test]
     fn polyphonic_event() {
         let length = 4.;
-        let mut sequencer = Sequencer::new(length);
+        let sample_rate = 48000.0;
+        let mut sequencer = Sequencer::new(length, sample_rate);
         let tempo = 120.0;
         let beat_time = 1.0;
         let duration = 1.0;
@@ -209,6 +222,7 @@ mod tests {
             beat_time,
             pitch: 60,
             velocity: 100,
+            track: 0,
             param1: 0.0,
             param2: 0.0,
             duration,
@@ -219,6 +233,7 @@ mod tests {
             beat_time,
             pitch: 67,
             velocity: 100,
+            track: 0,
             param1: 0.0,
             param2: 0.0,
             duration,
@@ -246,7 +261,8 @@ mod tests {
     #[test]
     fn clear_events() {
         let length = 4.;
-        let mut sequencer = Sequencer::new(length);
+        let sample_rate = 48000.0;
+        let mut sequencer = Sequencer::new(length, sample_rate);
         let tempo: f32 = 120.0;
         let beat_time = 1.0;
         let duration = 1.0;
@@ -254,6 +270,7 @@ mod tests {
             beat_time,
             pitch: 60,
             velocity: 100,
+            track: 0,
             param1: 0.0,
             param2: 0.0,
             duration,
@@ -274,16 +291,18 @@ mod tests {
     #[test]
     fn schedule_event() {
         let length = 4.;
-        let mut sequencer = Sequencer::new(length);
+        let sample_rate = 48000.0;
+        let mut sequencer = Sequencer::new(length, sample_rate);
 
         let tempo: f32 = 120.0;
-        let frame_count = 60.0 / tempo * length * SAMPLE_RATE as f32;
+        let frame_count = 60.0 / tempo * length * sample_rate as f32;
         let beat_time = 1.0;
         let duration = 1.0;
         let event = Event {
             beat_time,
             pitch: 60,
             velocity: 100,
+            track: 0,
             param1: 0.0,
             param2: 0.0,
             duration,
@@ -293,19 +312,21 @@ mod tests {
         for i in 0..frame_count as usize {
             let mut events = HashMap::new();
             sequencer.process(&mut events, i as i64, tempo, 1);
-            let sample_time = Sequencer::beat_to_sample(beat_time, tempo);
-            let duration_in_samples = Sequencer::beat_to_sample(duration, tempo);
+            let sample_time = sequencer.beat_to_sample(beat_time, tempo);
+            let duration_in_samples = sequencer.beat_to_sample(duration, tempo);
             if i == sample_time as usize {
                 match events.get(&0).unwrap()[0] {
                     ScheduledEvent::NoteOn {
                         time: _,
                         pitch,
                         velocity,
+                        track,
                         param1,
                         param2,
                     } => {
                         assert_eq!(pitch, 60);
                         assert_eq!(velocity, 100);
+                        assert_eq!(track, 0);
                         assert_eq!(param1, 0.0);
                         assert_eq!(param2, 0.0);
                     }
@@ -313,7 +334,11 @@ mod tests {
                 }
             } else if i == (sample_time + duration_in_samples) as usize {
                 match events.get(&0).unwrap()[0] {
-                    ScheduledEvent::NoteOff { time: _, pitch } => {
+                    ScheduledEvent::NoteOff {
+                        time: _,
+                        pitch,
+                        track: _,
+                    } => {
                         assert_eq!(pitch, 60)
                     }
                     _ => panic!("expected note on"),
@@ -327,9 +352,10 @@ mod tests {
     #[test]
     fn check_timing() {
         let length = 4.;
-        let mut sequencer = Sequencer::new(length);
+        let sample_rate = 48000.0;
+        let mut sequencer = Sequencer::new(length, sample_rate);
         let tempo: f32 = 120.0;
-        let frame_count = 60.0 / tempo * length * SAMPLE_RATE as f32;
+        let frame_count = 60.0 / tempo * length * sample_rate as f32;
 
         // schedule 4 events at equidistant intervals
         for i in 0..4 {
@@ -337,6 +363,7 @@ mod tests {
                 beat_time: i as f32,
                 pitch: 60,
                 velocity: 100,
+                track: 0,
                 param1: 0.0,
                 param2: 0.0,
                 duration: 1.0,
@@ -355,6 +382,7 @@ mod tests {
                             time,
                             pitch: _,
                             velocity: _,
+                            track: _,
                             param1: _,
                             param2: _,
                         } => {
