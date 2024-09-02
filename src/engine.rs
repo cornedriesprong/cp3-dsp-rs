@@ -1,7 +1,7 @@
 use crate::delay::Delay;
 use crate::karplus::KarplusVoice;
 use crate::limiter::Limiter;
-use crate::plaits_voice::{PlaitsDrums, PlaitsOscillator};
+use crate::plaits_voice::{FmVoice, PlaitsDrums};
 use crate::reverb::Reverb;
 use crate::sequencer::{ScheduledEvent, Sequencer};
 use crate::synth::SynthVoice;
@@ -12,7 +12,8 @@ use std::collections::HashMap;
 pub struct Engine {
     pub is_playing: bool,
     sequencer: Sequencer,
-    synth: PlaitsOscillator,
+    // synth: BLITVoice,
+    synth: FmVoice,
     string: KarplusVoice,
     drums: PlaitsDrums,
     reverb: Reverb,
@@ -26,7 +27,7 @@ impl Engine {
         Engine {
             is_playing: true,
             sequencer: Sequencer::new(4., sample_rate),
-            synth: PlaitsOscillator::new(sample_rate),
+            synth: FmVoice::new(sample_rate),
             string: KarplusVoice::new(sample_rate),
             drums: PlaitsDrums::new(sample_rate),
             reverb: Reverb::new(sample_rate),
@@ -34,6 +35,11 @@ impl Engine {
             limiter: Limiter::new(0.1, 0.5, 0.5, sample_rate),
             rx,
         }
+    }
+
+    pub fn init(&mut self) {
+        println!("Engine init");
+        self.synth.init();
     }
 
     pub fn process(
@@ -108,7 +114,7 @@ impl Engine {
             let delay = self.delay.tick(mix);
             mix += (reverb * 0.1) + (delay * 0.5);
 
-            mix = self.limiter.process(mix);
+            // mix = self.limiter.process(mix);
 
             buf_l[frame as usize] = mix;
             buf_r[frame as usize] = mix;

@@ -109,6 +109,14 @@ impl AR {
             _ => false,
         }
     }
+
+    pub fn set_attack(&mut self, attack_ms: f32) {
+        self.attack_ms = attack_ms;
+    }
+
+    pub fn set_release(&mut self, release_ms: f32) {
+        self.release_ms = release_ms;
+    }
 }
 
 #[cfg(test)]

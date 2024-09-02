@@ -1,104 +1,61 @@
+use crate::envelopes::{CurveType, AR};
 use crate::filters::SVF;
+use crate::osc::{BlitSawOsc, FmOsc};
 use crate::synth::SynthVoice;
 use crate::utils::pitch_to_freq;
 use mi_plaits_dsp::dsp::drums::{analog_bass_drum, analog_snare_drum, hihat};
-use mi_plaits_dsp::dsp::envelope::DecayEnvelope;
-use mi_plaits_dsp::dsp::oscillator;
-use mi_plaits_dsp::dsp::voice::{Modulations, Patch, Voice};
 
 const BLOCK_SIZE: usize = 1;
 
-pub struct PlaitsVoice<'a> {
-    osc: Voice<'a>,
-    patch: Patch,
-    modulations: Modulations,
+pub struct FmVoice {
+    osc: FmOsc,
+    env: AR,
+    filter: SVF,
     sample_rate: f32,
 }
 
-impl PlaitsVoice<'_> {
-    fn reset_params(&mut self) {
-        // reset params to saved settings (after changing them in sequence)
-        self.patch.engine = 0;
-        self.patch.harmonics = 0.5;
-        self.patch.timbre = 0.5;
-        self.patch.morph = 0.5;
-    }
-}
-
-impl SynthVoice for PlaitsVoice<'_> {
+impl SynthVoice for FmVoice {
     fn new(sample_rate: f32) -> Self {
         Self {
-            // TODO: don't hardcode block size
-            osc: Voice::new(&std::alloc::System, BLOCK_SIZE),
-            patch: Patch {
-                note: 48.0,
-                harmonics: 0.5,
-                timbre: 0.5,
-                morph: 0.5,
-                frequency_modulation_amount: 0.0,
-                timbre_modulation_amount: 0.5,
-                morph_modulation_amount: 0.5,
-                engine: 12,
-                decay: 0.5,
-                lpg_colour: 0.5,
-            },
-            modulations: Modulations {
-                engine: 0.0,
-                note: 0.0,
-                frequency: 0.0,
-                harmonics: 0.0,
-                timbre: 0.0,
-                morph: 0.0,
-                trigger: 0.0,
-                level: 0.0,
-                frequency_patched: false,
-                timbre_patched: false,
-                morph_patched: false,
-                trigger_patched: true,
-                level_patched: false,
-            },
+            osc: FmOsc::new(sample_rate),
+            env: AR::new(0.0, 500.0, CurveType::Exponential { pow: 3 }, sample_rate),
+            filter: SVF::new(10000.0, 0.717, sample_rate),
             sample_rate,
         }
     }
 
     fn init(&mut self) {
-        self.osc.init();
-        self.reset_params();
+        self.osc.reset();
     }
 
     #[inline]
     fn process(&mut self) -> f32 {
-        let mut buf = vec![0.0; BLOCK_SIZE];
-        let mut aux = vec![0.0; BLOCK_SIZE];
-        self.osc
-            .render(&self.patch, &self.modulations, &mut buf, &mut aux);
-        self.modulations.trigger = 0.0;
-
-        buf[0]
+        let y = self.osc.process();
+        let env = self.env.process();
+        self.filter.process(y) * env * 0.5
     }
 
     fn play(&mut self, pitch: u8, velocity: u8, _: f32, _: f32) {
-        println!("playing note at pitch: {}", pitch);
-        self.patch.note = pitch as f32;
-        self.modulations.trigger = velocity as f32 / 127.0;
+        self.osc.reset();
+        let freq = pitch_to_freq(pitch);
+        // self.osc.set_carrier_freq(freq);
+        self.env.trigger(velocity);
     }
 
-    fn reset(&mut self) {
-        self.reset_params();
-    }
+    fn reset(&mut self) {}
 
     fn stop(&mut self) {}
 
     fn set_parameter(&mut self, parameter: i8, value: f32) {
         match parameter {
-            0 => self.patch.harmonics = value,
-            1 => self.patch.timbre = value,
-            2 => self.patch.morph = value,
-            3 => self.patch.frequency_modulation_amount = value,
-            4 => self.patch.timbre_modulation_amount = value,
-            5 => self.patch.morph_modulation_amount = value,
-            6 => self.patch.decay = value,
-            7 => self.patch.lpg_colour = value,
+            0 => self.osc.set_carrier_freq(value),
+            1 => self.osc.set_mod_freq(value),
+            2 => self.filter.set_frequency(value, self.sample_rate),
+            3 => self.filter.set_q(value),
+            4 => self.osc.set_fm_amount(value),
+            5 => self.osc.set_mod_index(value),
+            6 => self.env.set_attack(value),
+            7 => self.env.set_release(value),
             _ => (),
         }
     }
@@ -108,58 +65,40 @@ impl SynthVoice for PlaitsVoice<'_> {
     }
 
     fn is_active(&self) -> bool {
-        // TODO: figure out how to determine if voice is active
+        // self.modulations.level > 0.0
         true
     }
 }
 
-pub struct PlaitsOscillator {
-    osc: oscillator::variable_saw_oscillator::VariableSawOscillator,
-    env: DecayEnvelope,
+pub struct BLITVoice {
+    osc: BlitSawOsc,
+    env: AR,
     filter: SVF,
-    frequency: f32,
-    pulse_width: f32,
-    waveshape: f32,
-    trigger: bool,
     sample_rate: f32,
 }
 
-impl SynthVoice for PlaitsOscillator {
+impl SynthVoice for BLITVoice {
     fn new(sample_rate: f32) -> Self {
         Self {
-            osc: oscillator::variable_saw_oscillator::VariableSawOscillator::new(),
-            env: DecayEnvelope::new(),
-            // env: LpgEnvelope::new(),
-            filter: SVF::new(1000.0, 1.717, sample_rate),
-            frequency: 50.0 / sample_rate,
-            pulse_width: 0.5,
-            waveshape: 0.5,
-            trigger: false,
+            osc: BlitSawOsc::new(sample_rate),
+            env: AR::new(10.0, 500.0, CurveType::Exponential { pow: 3 }, sample_rate),
+            filter: SVF::new(500.0, 1.717, sample_rate),
             sample_rate,
         }
     }
 
-    fn init(&mut self) {
-        self.osc.init();
-        self.env.init();
-        // self.lpg.init();
-    }
+    fn init(&mut self) {}
 
     #[inline]
     fn process(&mut self) -> f32 {
-        let mut buf = [0.0; BLOCK_SIZE];
-        self.osc
-            .render(self.frequency, self.pulse_width, self.waveshape, &mut buf);
-        self.trigger = false;
-
-        self.env.process(0.0002);
-        self.filter.process(buf[0]) * self.env.value() * 0.5
+        let y = self.osc.process();
+        let env = self.env.process();
+        self.filter.process(y) * env * 0.5
     }
 
     fn play(&mut self, pitch: u8, velocity: u8, _: f32, _: f32) {
-        self.frequency = pitch_to_freq(pitch) / self.sample_rate;
-        self.env.trigger();
-        self.trigger = true;
+        self.osc.set_freq(pitch_to_freq(pitch));
+        self.env.trigger(velocity);
     }
 
     fn reset(&mut self) {}
@@ -168,10 +107,10 @@ impl SynthVoice for PlaitsOscillator {
 
     fn set_parameter(&mut self, parameter: i8, value: f32) {
         match parameter {
-            0 => self.pulse_width = value,
-            1 => self.waveshape = value,
-            2 => self.filter.set_frequency(value * 10000.0, self.sample_rate),
-            3 => self.filter.set_q(value * 10.0),
+            0 => self.filter.set_frequency(value * 10000.0, self.sample_rate),
+            1 => self.filter.set_q(value * 10.0),
+            2 => self.env.set_attack(value * 100.0),
+            3 => self.env.set_release(value * 1000.0),
             _ => (),
         }
     }
@@ -471,7 +410,6 @@ impl SynthVoice for PlaitsDrums {
     }
 
     fn play(&mut self, pitch: u8, velocity: u8, _: f32, _: f32) {
-        println!("playing drum at pitch: {}", pitch);
         match pitch {
             36 => self.kick.play(40, velocity, 0.0, 0.0),
             38 => self.snare.play(40, velocity, 0.0, 0.0),

@@ -110,8 +110,8 @@ pub enum Waveform {
 pub struct Osc {
     waveform: Waveform,
     phase: f32,
+    frequency: f32,
     increment: f32,
-    // rng: rand::rngs::ThreadRng,
     sample_rate: f32,
 }
 
@@ -120,8 +120,8 @@ impl Osc {
         Self {
             waveform,
             phase: 0.0,
-            increment: A4_FREQ / sample_rate, // default to 440 Hz
-            // rng: rand::thread_rng(),
+            frequency: A4_FREQ,
+            increment: 2.0 * PI * A4_FREQ / sample_rate, // default to 440 Hz
             sample_rate,
         }
     }
@@ -138,26 +138,84 @@ impl Osc {
         output
     }
 
-    pub fn set_freq(&mut self, freq: f32) {
-        self.increment = freq / self.sample_rate;
+    #[inline]
+    pub fn process_phase_mod(&mut self, phase_mod: f32) -> f32 {
+        let output = self.generate_waveform();
+        self.phase += self.increment + phase_mod;
+
+        if self.phase >= 2.0 * PI {
+            self.phase -= 2.0 * PI;
+        }
+
+        output
     }
 
-    fn generate_waveform(&mut self) -> f32 {
-        // TODO: bandlimit waveforms
-        // TODO: implement noise
+    pub fn set_freq(&mut self, frequency: f32) {
+        self.frequency = frequency;
+        self.increment = 2.0 * PI * frequency / self.sample_rate;
+    }
+
+    fn generate_waveform(&self) -> f32 {
         match self.waveform {
             Waveform::Sine => self.phase.sin(),
-            Waveform::Saw => self.phase * 2.0 - 1.0,
+            Waveform::Saw => 2.0 * (self.phase / (2.0 * PI)) - 1.0,
             Waveform::Square => {
-                if self.phase < 0.5 {
-                    -1.0
-                } else {
+                if self.phase < PI {
                     1.0
+                } else {
+                    -1.0
                 }
             }
-            Waveform::Noise => 0.0,
-            // } // Waveform::Noise => self.rng.gen::<f32>() * 2.0 - 1.0,
+            Waveform::Noise => rand::random::<f32>() * 2.0 - 1.0,
         }
+    }
+}
+
+pub struct FmOsc {
+    carrier: Osc,
+    modulator: Osc,
+    fm_amount: f32,
+    mod_index: f32,
+}
+
+impl FmOsc {
+    pub fn new(sample_rate: f32) -> Self {
+        Self {
+            carrier: Osc::new(Waveform::Sine, sample_rate),
+            fm_amount: 0.5,
+            modulator: Osc::new(Waveform::Sine, sample_rate),
+            mod_index: 0.5,
+        }
+    }
+
+    pub fn set_carrier_freq(&mut self, freq: f32) {
+        self.carrier.set_freq(freq);
+    }
+
+    pub fn set_mod_freq(&mut self, freq: f32) {
+        self.modulator.set_freq(freq);
+    }
+
+    pub fn set_fm_amount(&mut self, fm_amount: f32) {
+        self.fm_amount = fm_amount;
+    }
+
+    pub fn set_mod_index(&mut self, mod_index: f32) {
+        println!("setting mod index: {}", mod_index);
+        self.mod_index = mod_index;
+    }
+
+    pub fn reset(&mut self) {
+        self.carrier.phase = PI / 2.0;
+        self.modulator.phase = 0.0;
+    }
+
+    #[inline]
+    pub fn process(&mut self) -> f32 {
+        let mod_out = self.modulator.process();
+        let mod_signal = self.fm_amount * self.mod_index * mod_out;
+        let carrier_out = self.carrier.process_phase_mod(mod_signal);
+        carrier_out + (mod_out * (1.0 - self.fm_amount))
     }
 }
 
