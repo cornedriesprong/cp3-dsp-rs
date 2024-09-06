@@ -44,7 +44,7 @@ impl ReverbPath {
         };
 
         // low pass filter
-        y = self.svf.process(y);
+        y = self.svf.process(y, 0.0);
 
         // write the signal back to the delay line
         self.delay_line.write_and_increment(y);

@@ -3,7 +3,6 @@ use crate::limiter::Limiter;
 use crate::plaits_voice::FmVoice;
 use crate::reverb::Reverb;
 use crate::sequencer::{ScheduledEvent, Sequencer};
-use crate::synth::SynthVoice;
 use crate::{Message, NOTE_CALLBACK};
 use crossbeam::channel::Receiver;
 use std::collections::HashMap;
@@ -40,7 +39,6 @@ impl Engine {
 
     pub fn init(&mut self) {
         println!("Engine init");
-        self.synth.init();
     }
 
     pub fn process(
@@ -74,13 +72,7 @@ impl Engine {
                             param2,
                         } => {
                             Self::note_played(true, *pitch, *track);
-                            println!("Note on: {} {}", *pitch, *track);
-                            self.voices[*track as usize].play(
-                                *pitch as u8,
-                                *velocity as u8,
-                                *param1,
-                                *param2,
-                            );
+                            self.voices[*track as usize].trigger(*velocity as u8);
                         }
                         ScheduledEvent::NoteOff {
                             time: _,
@@ -108,20 +100,20 @@ impl Engine {
             let delay = self.delay.tick(mix);
             mix += (reverb * 0.1) + (delay * 0.5);
 
-            // mix = self.limiter.process(mix);
+            mix = self.limiter.process(mix);
 
             buf_l[frame as usize] = mix;
             buf_r[frame as usize] = mix;
         }
     }
 
-    pub fn note_on(&mut self, pitch: u8, velocity: u8, track: i8, param1: f32, param2: f32) {
-        self.voices[track as usize].play(pitch, velocity, param1, param2);
+    pub fn note_on(&mut self, _: u8, velocity: u8, track: i8, _: f32, _: f32) {
+        self.voices[track as usize].trigger(velocity);
     }
 
-    pub fn note_off(&mut self, pitch: u8, track: i8) {}
+    pub fn note_off(&mut self, _: u8, _: i8) {}
 
-    pub fn set_sound(&mut self, sound: i8, track: i8) {}
+    pub fn set_sound(&mut self, _: i8, _: i8) {}
 
     pub fn get_msgs(&mut self) {
         while let Ok(msg) = self.rx.try_recv() {

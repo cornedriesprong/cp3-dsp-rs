@@ -21,10 +21,10 @@ pub enum CurveType {
 pub struct AR {
     pub attack_ms: f32,
     pub decay_ms: f32,
-    delta: f32,
+    pub state: EnvelopeState,
+    value: f32,
     time: f32,
     velocity: f32,
-    state: EnvelopeState,
     curve_type: CurveType,
     sample_rate: f32,
 }
@@ -34,7 +34,7 @@ impl AR {
         let ar = AR {
             attack_ms,
             decay_ms,
-            delta: 0.0,
+            value: 0.0,
             time: 0.0,
             velocity: 1.0,
             state: EnvelopeState::Off,
@@ -62,22 +62,22 @@ impl AR {
             E::Attack => {
                 let length = self.attack_ms * (self.sample_rate / 1000.0);
                 if length == 0.0 {
-                    self.delta = 1.0;
+                    self.value = 1.0;
                 } else {
-                    self.delta = self.get_curve(length) * self.velocity;
+                    self.value = self.get_curve(length) * self.velocity;
                 }
 
-                if self.delta >= 1.0 {
-                    self.delta = 1.0;
+                if self.value >= 1.0 {
+                    self.value = 1.0;
                     self.time = 0.0;
                     self.state = E::Decay;
                 }
             }
             E::Decay => {
                 let length = self.decay_ms * (self.sample_rate / 1000.0);
-                self.delta = self.get_curve_rev(length) * self.velocity;
-                if self.delta <= 0.0 {
-                    self.delta = 0.0;
+                self.value = self.get_curve_rev(length) * self.velocity;
+                if self.value <= 0.0 {
+                    self.value = 0.0;
                     self.time = 0.0;
                     self.state = E::Off;
                 }
@@ -88,7 +88,7 @@ impl AR {
         }
         self.time += 1.0;
 
-        self.delta
+        self.value
     }
 
     fn get_curve(&self, length: f32) -> f32 {
@@ -115,7 +115,7 @@ impl AR {
 
     fn reset(&mut self) {
         self.time = 0.0;
-        self.delta = 0.0;
+        self.value = 0.0;
     }
 }
 

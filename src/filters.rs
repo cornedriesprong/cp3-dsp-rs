@@ -81,6 +81,7 @@ impl OnePoleLPF {
 /// Cytomic (Andrew Simper) state-variable filter
 #[derive(Debug, Clone, Copy)]
 pub struct SVF {
+    freq: f32,
     g: f32,
     k: f32,
     a1: f32,
@@ -88,11 +89,13 @@ pub struct SVF {
     a3: f32,
     ic1eq: f32,
     ic2eq: f32,
+    sample_rate: f32,
 }
 
 impl SVF {
     pub fn new(freq: f32, q: f32, sample_rate: f32) -> SVF {
         let mut svf = SVF {
+            freq,
             g: 0.0,
             k: 0.0,
             a1: 0.0,
@@ -100,14 +103,20 @@ impl SVF {
             a3: 0.0,
             ic1eq: 0.0,
             ic2eq: 0.0,
+            sample_rate,
         };
-        svf.update_freq(freq, sample_rate);
+        svf.update_freq(freq);
         svf.update_q(q);
         svf
     }
 
     #[inline]
-    pub fn process(&mut self, x: f32) -> f32 {
+    pub fn process(&mut self, x: f32, freq_mod: f32) -> f32 {
+        if freq_mod > 0.0 {
+            let freq = self.freq + (freq_mod * self.freq);
+            self.g = (std::f32::consts::PI * freq / self.sample_rate).tan();
+            self.update_coefficients();
+        }
         let v3 = x - self.ic2eq;
         let v1 = self.a1 * self.ic1eq + self.a2 * v3;
         let v2 = self.ic2eq + self.a2 * self.ic1eq + self.a3 * v3;
@@ -117,8 +126,9 @@ impl SVF {
         v2 // return lowpass
     }
 
-    pub fn update_freq(&mut self, freq: f32, sample_rate: f32) {
-        self.g = (std::f32::consts::PI * freq / sample_rate).tan();
+    pub fn update_freq(&mut self, freq: f32) {
+        self.freq = freq;
+        self.g = (std::f32::consts::PI * freq / self.sample_rate).tan();
         self.update_coefficients();
     }
 
