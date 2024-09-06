@@ -1,5 +1,7 @@
 use crate::consts::A4_FREQ;
-use std::f32::consts::{FRAC_PI_4, PI};
+use crate::envelopes::{CurveType, AR};
+use crate::filters::SVF;
+use std::f32::consts::{FRAC_PI_4, PI, TAU};
 extern crate rand;
 
 /*
@@ -171,51 +173,123 @@ impl Osc {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct FmOp {
+    pub freq_hz: f32,
+    pub fb_amt: f32,
+    phase: f32,
+    z: f32, // 1 sample delay register: z^-1
+    sample_rate: f32,
+}
+
+impl FmOp {
+    pub fn new(sample_rate: f32) -> Self {
+        Self {
+            freq_hz: 200.0,
+            fb_amt: 0.0,
+            phase: 0.0,
+            z: 0.0,
+            sample_rate,
+        }
+    }
+
+    #[inline]
+    pub fn process_phase_mod(&mut self, phase_mod: f32) -> f32 {
+        let inc = self.freq_hz / self.sample_rate;
+        let y = (TAU * self.phase + (self.z * self.fb_amt) + phase_mod).sin();
+
+        self.phase += inc;
+
+        if self.phase >= 1.0 {
+            self.phase -= 1.0;
+        }
+
+        self.z = y;
+
+        y
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct FmOsc {
-    carrier: Osc,
-    modulator: Osc,
-    fm_amount: f32,
-    mod_index: f32,
+    pub carrier: FmOp,
+    pub carrier_env: AR,
+    pub modulator: FmOp,
+    pub mod_env: AR,
+    pub fm_amt: f32,
+    pub mod_index: f32,
+    pub filter_carrier_env_amt: f32,
+    pub filter_mod_env_amt: f32,
+    pub pitch_carrier_env_amt: f32,
+    pub pitch_mod_env_amt: f32,
+    pub filter: SVF,
+    sample_rate: f32,
 }
 
 impl FmOsc {
     pub fn new(sample_rate: f32) -> Self {
         Self {
-            carrier: Osc::new(Waveform::Sine, sample_rate),
-            fm_amount: 0.5,
-            modulator: Osc::new(Waveform::Sine, sample_rate),
-            mod_index: 0.5,
+            carrier: FmOp::new(sample_rate),
+            carrier_env: AR::new(1.0, 500.0, CurveType::Exponential { pow: 3 }, sample_rate),
+            fm_amt: 0.0,
+            modulator: FmOp::new(sample_rate),
+            mod_env: AR::new(1.0, 100.0, CurveType::Exponential { pow: 3 }, sample_rate),
+            mod_index: 0.0,
+            filter_carrier_env_amt: 0.0,
+            filter_mod_env_amt: 0.0,
+            pitch_carrier_env_amt: 0.0,
+            pitch_mod_env_amt: 0.0,
+            filter: SVF::new(5000.0, 0.717, sample_rate),
+            sample_rate,
         }
     }
 
-    pub fn set_carrier_freq(&mut self, freq: f32) {
-        self.carrier.set_freq(freq);
-    }
-
-    pub fn set_mod_freq(&mut self, freq: f32) {
-        self.modulator.set_freq(freq);
-    }
-
-    pub fn set_fm_amount(&mut self, fm_amount: f32) {
-        self.fm_amount = fm_amount;
-    }
-
-    pub fn set_mod_index(&mut self, mod_index: f32) {
-        println!("setting mod index: {}", mod_index);
-        self.mod_index = mod_index;
+    pub fn trigger(&mut self, velocity: u8) {
+        self.carrier_env.trigger(velocity);
+        self.mod_env.trigger(velocity);
     }
 
     pub fn reset(&mut self) {
+        // start carrier phase at 90 degrees to increase percussiveness/attack
         self.carrier.phase = PI / 2.0;
         self.modulator.phase = 0.0;
     }
 
     #[inline]
     pub fn process(&mut self) -> f32 {
-        let mod_out = self.modulator.process();
-        let mod_signal = self.fm_amount * self.mod_index * mod_out;
-        let carrier_out = self.carrier.process_phase_mod(mod_signal);
-        carrier_out + (mod_out * (1.0 - self.fm_amount))
+        let mod_env_signal = self.mod_env.process();
+
+        if self.pitch_mod_env_amt > 0.0 {
+            self.carrier.freq_hz = 1000.0 * (mod_env_signal * self.pitch_mod_env_amt);
+        }
+
+        let mod_out = self.modulator.process_phase_mod(0.0);
+        let mod_signal = self.fm_amt * self.mod_index * mod_out;
+        let carrier_env_signal = self.carrier_env.process();
+
+        if self.pitch_carrier_env_amt > 0.0 {
+            self.carrier.freq_hz = 1000.0 * (carrier_env_signal * self.pitch_carrier_env_amt);
+        }
+
+        let carrier_out = self.carrier.process_phase_mod(mod_signal * mod_env_signal);
+        let mut y = carrier_out + (mod_out * (1.0 - self.fm_amt));
+        y = y * carrier_env_signal;
+
+        if self.filter_carrier_env_amt > 0.0 {
+            self.filter.update_freq(
+                10000.0 * (carrier_env_signal * self.filter_carrier_env_amt),
+                self.sample_rate,
+            );
+        }
+
+        if self.filter_mod_env_amt > 0.0 {
+            self.filter.update_freq(
+                5000.0 * (mod_env_signal * self.filter_mod_env_amt),
+                self.sample_rate,
+            );
+        }
+
+        self.filter.process(y) * 0.5
     }
 }
 

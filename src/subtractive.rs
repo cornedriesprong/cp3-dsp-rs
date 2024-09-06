@@ -42,9 +42,8 @@ impl SynthVoice for SubtractiveVoice {
     fn play(&mut self, pitch: u8, velocity: u8, param1: f32, param2: f32) {
         self.velocity = velocity as f32 / 128.0;
         self.pitch = Some(pitch);
-        self.filter
-            .set_frequency(param1 * 10000.0, self.sample_rate);
-        self.filter.set_q(param2 * 20.0);
+        self.filter.update_freq(param1 * 10000.0, self.sample_rate);
+        self.filter.update_q(param2 * 20.0);
         let freq = pitch_to_freq(pitch);
         self.osc.reset(); // resetting the phase is optional!
         self.osc.set_freq(freq);
@@ -52,12 +51,12 @@ impl SynthVoice for SubtractiveVoice {
     }
 
     fn reset(&mut self) {
-        self.env.release();
+        self.env.decay();
         self.osc.reset();
     }
 
     fn stop(&mut self) {
-        self.env.release();
+        self.env.decay();
         self.pitch = None;
     }
 

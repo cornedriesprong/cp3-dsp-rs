@@ -1,7 +1,6 @@
 use crate::delay::Delay;
-use crate::karplus::KarplusVoice;
 use crate::limiter::Limiter;
-use crate::plaits_voice::{FmVoice, PlaitsDrums};
+use crate::plaits_voice::FmVoice;
 use crate::reverb::Reverb;
 use crate::sequencer::{ScheduledEvent, Sequencer};
 use crate::synth::SynthVoice;
@@ -14,8 +13,9 @@ pub struct Engine {
     sequencer: Sequencer,
     // synth: BLITVoice,
     synth: FmVoice,
-    string: KarplusVoice,
-    drums: PlaitsDrums,
+    voices: [FmVoice; 16],
+    // string: KarplusVoice,
+    // drums: PlaitsDrums,
     reverb: Reverb,
     delay: Delay,
     limiter: Limiter,
@@ -28,8 +28,9 @@ impl Engine {
             is_playing: true,
             sequencer: Sequencer::new(4., sample_rate),
             synth: FmVoice::new(sample_rate),
-            string: KarplusVoice::new(sample_rate),
-            drums: PlaitsDrums::new(sample_rate),
+            voices: [FmVoice::new(sample_rate); 16],
+            // string: KarplusVoice::new(sample_rate),
+            // drums: PlaitsDrums::new(sample_rate),
             reverb: Reverb::new(sample_rate),
             delay: Delay::new(sample_rate * 0.5, 0.5),
             limiter: Limiter::new(0.1, 0.5, 0.5, sample_rate),
@@ -73,23 +74,13 @@ impl Engine {
                             param2,
                         } => {
                             Self::note_played(true, *pitch, *track);
-                            match track {
-                                0 => {
-                                    self.drums
-                                        .play(*pitch as u8, *velocity as u8, *param1, *param2)
-                                }
-                                1 => {
-                                    self.synth
-                                        .play(*pitch as u8, *velocity as u8, *param1, *param2)
-                                }
-                                2 => self.string.play(
-                                    *pitch as u8,
-                                    *velocity as u8,
-                                    *param1,
-                                    *param2,
-                                ),
-                                _ => (),
-                            }
+                            println!("Note on: {} {}", *pitch, *track);
+                            self.voices[*track as usize].play(
+                                *pitch as u8,
+                                *velocity as u8,
+                                *param1,
+                                *param2,
+                            );
                         }
                         ScheduledEvent::NoteOff {
                             time: _,
@@ -104,9 +95,12 @@ impl Engine {
             }
 
             let mut mix = 0.0;
-            mix += self.drums.process();
-            mix += self.synth.process();
-            mix += self.string.process();
+
+            for voice in self.voices.iter_mut() {
+                if voice.is_active() {
+                    mix += voice.process();
+                }
+            }
 
             mix /= 3.0;
 
@@ -122,12 +116,7 @@ impl Engine {
     }
 
     pub fn note_on(&mut self, pitch: u8, velocity: u8, track: i8, param1: f32, param2: f32) {
-        match track {
-            0 => self.drums.play(pitch, velocity, param1, param2),
-            1 => self.synth.play(pitch, velocity, param1, param2),
-            2 => self.string.play(pitch, velocity, param1, param2),
-            _ => (),
-        }
+        self.voices[track as usize].play(pitch, velocity, param1, param2);
     }
 
     pub fn note_off(&mut self, pitch: u8, track: i8) {}
@@ -143,12 +132,9 @@ impl Engine {
                 Message::Clear => {
                     self.sequencer.clear();
                 }
-                Message::ParameterChange(parameter, value, track) => match track {
-                    0 => self.drums.set_parameter(parameter, value),
-                    1 => self.synth.set_parameter(parameter, value),
-                    2 => self.string.set_parameter(parameter, value),
-                    _ => (),
-                },
+                Message::ParameterChange(parameter, value, track) => {
+                    self.voices[track as usize].set_parameter(parameter, value);
+                }
             }
         }
     }

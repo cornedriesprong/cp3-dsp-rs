@@ -69,7 +69,7 @@ impl OnePoleLPF {
         self.z
     }
 
-    pub fn set_frequency(&mut self, freq: f32, sample_rate: i32) {
+    pub fn update_freq(&mut self, freq: f32, sample_rate: i32) {
         self.alpha = Self::calculate_alpha(freq, sample_rate);
     }
 
@@ -79,7 +79,7 @@ impl OnePoleLPF {
 }
 
 /// Cytomic (Andrew Simper) state-variable filter
-#[derive(Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct SVF {
     g: f32,
     k: f32,
@@ -101,8 +101,8 @@ impl SVF {
             ic1eq: 0.0,
             ic2eq: 0.0,
         };
-        svf.set_frequency(freq, sample_rate);
-        svf.set_q(q);
+        svf.update_freq(freq, sample_rate);
+        svf.update_q(q);
         svf
     }
 
@@ -117,12 +117,12 @@ impl SVF {
         v2 // return lowpass
     }
 
-    pub fn set_frequency(&mut self, freq: f32, sample_rate: f32) {
+    pub fn update_freq(&mut self, freq: f32, sample_rate: f32) {
         self.g = (std::f32::consts::PI * freq / sample_rate).tan();
         self.update_coefficients();
     }
 
-    pub fn set_q(&mut self, q: f32) {
+    pub fn update_q(&mut self, q: f32) {
         self.k = 1.0 / q;
         self.update_coefficients();
     }

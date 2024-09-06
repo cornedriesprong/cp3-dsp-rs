@@ -1,11 +1,13 @@
 use crate::utils::{lerp, xerp};
 
+#[derive(Debug, Clone, Copy)]
 pub enum EnvelopeState {
     Attack,
-    Release,
+    Decay,
     Off,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum CurveType {
     Linear,
     Exponential { pow: i8 },
@@ -15,9 +17,10 @@ pub enum CurveType {
 /*
     Attack/Release envelope
 */
+#[derive(Debug, Clone, Copy)]
 pub struct AR {
-    attack_ms: f32,
-    release_ms: f32,
+    pub attack_ms: f32,
+    pub decay_ms: f32,
     delta: f32,
     time: f32,
     velocity: f32,
@@ -27,10 +30,10 @@ pub struct AR {
 }
 
 impl AR {
-    pub fn new(attack_ms: f32, release_ms: f32, curve_type: CurveType, sample_rate: f32) -> Self {
+    pub fn new(attack_ms: f32, decay_ms: f32, curve_type: CurveType, sample_rate: f32) -> Self {
         let ar = AR {
             attack_ms,
-            release_ms,
+            decay_ms,
             delta: 0.0,
             time: 0.0,
             velocity: 1.0,
@@ -43,13 +46,13 @@ impl AR {
     }
 
     pub fn trigger(&mut self, velocity: u8) {
+        self.reset();
         self.velocity = velocity as f32 / 127.0;
         self.state = EnvelopeState::Attack;
     }
 
-    pub fn release(&mut self) {
-        // TODO: trigger release
-        self.state = EnvelopeState::Off;
+    pub fn decay(&mut self) {
+        self.state = EnvelopeState::Decay;
     }
 
     #[inline]
@@ -67,11 +70,11 @@ impl AR {
                 if self.delta >= 1.0 {
                     self.delta = 1.0;
                     self.time = 0.0;
-                    self.state = E::Release;
+                    self.state = E::Decay;
                 }
             }
-            E::Release => {
-                let length = self.release_ms * (self.sample_rate / 1000.0);
+            E::Decay => {
+                let length = self.decay_ms * (self.sample_rate / 1000.0);
                 self.delta = self.get_curve_rev(length) * self.velocity;
                 if self.delta <= 0.0 {
                     self.delta = 0.0;
@@ -105,17 +108,14 @@ impl AR {
     pub fn is_active(&self) -> bool {
         match self.state {
             EnvelopeState::Attack => true,
-            EnvelopeState::Release => true,
+            EnvelopeState::Decay => true,
             _ => false,
         }
     }
 
-    pub fn set_attack(&mut self, attack_ms: f32) {
-        self.attack_ms = attack_ms;
-    }
-
-    pub fn set_release(&mut self, release_ms: f32) {
-        self.release_ms = release_ms;
+    fn reset(&mut self) {
+        self.time = 0.0;
+        self.delta = 0.0;
     }
 }
 
@@ -136,7 +136,7 @@ mod tests {
         );
 
         assert_eq!(ar.attack_ms, attack);
-        assert_eq!(ar.release_ms, release);
+        assert_eq!(ar.decay_ms, release);
     }
 
     #[test]
@@ -180,7 +180,7 @@ mod tests {
         let mut ar = AR::new(attack, release, CurveType::Linear, sample_rate);
 
         ar.trigger(127);
-        matches!(ar.state, EnvelopeState::Release);
+        matches!(ar.state, EnvelopeState::Decay);
         assert_eq!(ar.process(), 1.0);
         assert_eq!(ar.process(), 0.99583334);
     }
@@ -198,7 +198,7 @@ mod tests {
         );
 
         ar.trigger(127);
-        matches!(ar.state, EnvelopeState::Release);
+        matches!(ar.state, EnvelopeState::Decay);
         assert_eq!(ar.process(), 1.0);
         assert_eq!(ar.process(), 0.991684);
     }

@@ -7,10 +7,9 @@ use mi_plaits_dsp::dsp::drums::{analog_bass_drum, analog_snare_drum, hihat};
 
 const BLOCK_SIZE: usize = 1;
 
+#[derive(Debug, Clone, Copy)]
 pub struct FmVoice {
     osc: FmOsc,
-    env: AR,
-    filter: SVF,
     sample_rate: f32,
 }
 
@@ -18,8 +17,6 @@ impl SynthVoice for FmVoice {
     fn new(sample_rate: f32) -> Self {
         Self {
             osc: FmOsc::new(sample_rate),
-            env: AR::new(0.0, 500.0, CurveType::Exponential { pow: 3 }, sample_rate),
-            filter: SVF::new(10000.0, 0.717, sample_rate),
             sample_rate,
         }
     }
@@ -30,16 +27,14 @@ impl SynthVoice for FmVoice {
 
     #[inline]
     fn process(&mut self) -> f32 {
-        let y = self.osc.process();
-        let env = self.env.process();
-        self.filter.process(y) * env * 0.5
+        self.osc.process()
     }
 
     fn play(&mut self, pitch: u8, velocity: u8, _: f32, _: f32) {
-        self.osc.reset();
-        let freq = pitch_to_freq(pitch);
+        // self.osc.reset();
+        // let freq = pitch_to_freq(pitch);
         // self.osc.set_carrier_freq(freq);
-        self.env.trigger(velocity);
+        self.osc.trigger(velocity);
     }
 
     fn reset(&mut self) {}
@@ -48,14 +43,22 @@ impl SynthVoice for FmVoice {
 
     fn set_parameter(&mut self, parameter: i8, value: f32) {
         match parameter {
-            0 => self.osc.set_carrier_freq(value),
-            1 => self.osc.set_mod_freq(value),
-            2 => self.filter.set_frequency(value, self.sample_rate),
-            3 => self.filter.set_q(value),
-            4 => self.osc.set_fm_amount(value),
-            5 => self.osc.set_mod_index(value),
-            6 => self.env.set_attack(value),
-            7 => self.env.set_release(value),
+            0 => self.osc.carrier.freq_hz = value,
+            1 => self.osc.modulator.freq_hz = value,
+            2 => self.osc.filter.update_freq(value, self.sample_rate),
+            3 => self.osc.filter.update_q(value),
+            4 => self.osc.fm_amt = value,
+            5 => self.osc.mod_index = value,
+            6 => self.osc.carrier.fb_amt = value,
+            7 => self.osc.modulator.fb_amt = value,
+            8 => self.osc.carrier_env.attack_ms = value,
+            9 => self.osc.carrier_env.decay_ms = value,
+            10 => self.osc.mod_env.attack_ms = value,
+            11 => self.osc.mod_env.decay_ms = value,
+            12 => self.osc.filter_carrier_env_amt = value,
+            13 => self.osc.filter_mod_env_amt = value,
+            14 => self.osc.pitch_carrier_env_amt = value,
+            15 => self.osc.pitch_mod_env_amt = value,
             _ => (),
         }
     }
@@ -107,10 +110,10 @@ impl SynthVoice for BLITVoice {
 
     fn set_parameter(&mut self, parameter: i8, value: f32) {
         match parameter {
-            0 => self.filter.set_frequency(value * 10000.0, self.sample_rate),
-            1 => self.filter.set_q(value * 10.0),
-            2 => self.env.set_attack(value * 100.0),
-            3 => self.env.set_release(value * 1000.0),
+            0 => self.filter.update_freq(value * 10000.0, self.sample_rate),
+            1 => self.filter.update_q(value * 10.0),
+            2 => self.env.attack_ms = value,
+            3 => self.env.decay_ms = value,
             _ => (),
         }
     }
