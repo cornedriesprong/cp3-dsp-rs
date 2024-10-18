@@ -26,7 +26,7 @@ impl Delay {
     }
 
     #[inline]
-    pub fn tick(&mut self, input: f32) -> f32 {
+    pub fn process(&mut self, input: f32) -> f32 {
         let delayed = self.delay_line.read(None);
         let output = input + (delayed * self.feedback);
         self.delay_line.write_and_increment(output);

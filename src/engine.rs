@@ -10,11 +10,7 @@ use std::collections::HashMap;
 pub struct Engine {
     pub is_playing: bool,
     sequencer: Sequencer,
-    // synth: BLITVoice,
-    synth: FmVoice,
     voices: [FmVoice; 16],
-    // string: KarplusVoice,
-    // drums: PlaitsDrums,
     reverb: Reverb,
     delay: Delay,
     limiter: Limiter,
@@ -24,12 +20,9 @@ pub struct Engine {
 impl Engine {
     pub fn new(rx: Receiver<Message>, sample_rate: f32) -> Self {
         Engine {
-            is_playing: true,
+            is_playing: false,
             sequencer: Sequencer::new(4., sample_rate),
-            synth: FmVoice::new(sample_rate),
             voices: [FmVoice::new(sample_rate); 16],
-            // string: KarplusVoice::new(sample_rate),
-            // drums: PlaitsDrums::new(sample_rate),
             reverb: Reverb::new(sample_rate),
             delay: Delay::new(sample_rate * 0.5, 0.5),
             limiter: Limiter::new(0.1, 0.5, 0.5, sample_rate),
@@ -50,10 +43,9 @@ impl Engine {
         num_frames: i32,
     ) {
         let mut events = HashMap::new();
+        self.get_msgs();
 
         if self.is_playing {
-            self.get_msgs();
-
             self.sequencer
                 .process(&mut events, sample_time, tempo, num_frames);
         }
@@ -87,20 +79,30 @@ impl Engine {
             }
 
             let mut mix = 0.0;
+            let mut reverb_bus = 0.0;
+            let mut delay_bus = 0.0;
+            let mut active_voice_count = 1.0;
 
             for voice in self.voices.iter_mut() {
                 if voice.is_active() {
-                    mix += voice.process();
+                    let y = voice.process();
+                    mix += y;
+
+                    reverb_bus += y * voice.reverb_amt;
+                    delay_bus += y * voice.delay_amt;
+
+                    active_voice_count += 1.0;
                 }
             }
 
-            mix /= 3.0;
+            mix /= active_voice_count;
+            reverb_bus /= active_voice_count;
+            delay_bus /= active_voice_count;
 
-            let reverb = self.reverb.process(mix);
-            let delay = self.delay.tick(mix);
-            mix += (reverb * 0.1) + (delay * 0.5);
+            mix += self.reverb.process(reverb_bus);
+            mix += self.delay.process(delay_bus);
 
-            mix = self.limiter.process(mix);
+            // mix = self.limiter.process(mix);
 
             buf_l[frame as usize] = mix;
             buf_r[frame as usize] = mix;

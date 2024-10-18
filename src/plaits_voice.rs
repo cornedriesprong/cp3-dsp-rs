@@ -20,6 +20,8 @@ pub struct FmVoice {
     pub pitch_carrier_env_amt: f32,
     pub pitch_mod_env_amt: f32,
     pub filter: SVF,
+    pub reverb_amt: f32,
+    pub delay_amt: f32,
 }
 
 impl FmVoice {
@@ -34,7 +36,9 @@ impl FmVoice {
             filter_mod_env_amt: 0.0,
             pitch_carrier_env_amt: 0.0,
             pitch_mod_env_amt: 0.0,
-            filter: SVF::new(1000.0, 0.717, sample_rate),
+            filter: SVF::new(4000.0, 1.717, sample_rate),
+            reverb_amt: 0.0,
+            delay_amt: 0.0,
         }
     }
 
@@ -88,6 +92,8 @@ impl FmVoice {
             12 => self.filter_mod_env_amt = value,
             13 => self.pitch_carrier_env_amt = value,
             14 => self.pitch_mod_env_amt = value,
+            15 => self.reverb_amt = value,
+            16 => self.delay_amt = value,
             _ => (),
         }
     }

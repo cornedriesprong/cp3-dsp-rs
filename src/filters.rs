@@ -21,7 +21,7 @@ use std::f32::consts::PI;
 /// x[n]-o--->[a0]--+-y[n]
 ///      |          |
 ///    [z^1]->[a1]--o
-///  
+///
 ///  **Difference equation:**
 ///  `y[n] = a0 * x[n] + a1 * x[n-1]`
 ///
@@ -78,6 +78,13 @@ impl OnePoleLPF {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum SVFMode {
+    Lowpass,
+    Highpass,
+    Bandpass,
+}
+
 /// Cytomic (Andrew Simper) state-variable filter
 #[derive(Debug, Clone, Copy)]
 pub struct SVF {
@@ -90,6 +97,7 @@ pub struct SVF {
     ic1eq: f32,
     ic2eq: f32,
     sample_rate: f32,
+    pub mode: SVFMode,
 }
 
 impl SVF {
@@ -104,12 +112,12 @@ impl SVF {
             ic1eq: 0.0,
             ic2eq: 0.0,
             sample_rate,
+            mode: SVFMode::Highpass,
         };
         svf.update_freq(freq);
         svf.update_q(q);
         svf
     }
-
     #[inline]
     pub fn process(&mut self, x: f32, freq_mod: f32) -> f32 {
         if freq_mod > 0.0 {
@@ -123,7 +131,11 @@ impl SVF {
         self.ic1eq = 2.0 * v1 - self.ic1eq;
         self.ic2eq = 2.0 * v2 - self.ic2eq;
 
-        v2 // return lowpass
+        match self.mode {
+            SVFMode::Lowpass => v1,
+            SVFMode::Highpass => x - self.ic2eq - self.a2 * self.ic1eq,
+            SVFMode::Bandpass => v2,
+        }
     }
 
     pub fn update_freq(&mut self, freq: f32) {
@@ -148,9 +160,23 @@ impl SVF {
     }
 
     fn update_coefficients(&mut self) {
-        self.a1 = 1.0 / (1.0 + self.g * (self.g + self.k));
-        self.a2 = self.g * self.a1;
-        self.a3 = self.g * self.a2;
+        match self.mode {
+            SVFMode::Lowpass => {
+                self.a1 = 1.0 / (1.0 + self.g * (self.g + self.k));
+                self.a2 = self.g * self.a1;
+                self.a3 = self.g * self.a2;
+            }
+            SVFMode::Highpass => {
+                self.a1 = 1.0 / (1.0 + self.g * (self.g + self.k));
+                self.a2 = self.g * self.a1;
+                self.a3 = self.g * self.a2;
+            }
+            SVFMode::Bandpass => {
+                self.a1 = 1.0 / (1.0 + self.g * (self.g + self.k));
+                self.a2 = self.g * self.a1;
+                self.a3 = self.g * self.a2;
+            }
+        }
     }
 }
 
