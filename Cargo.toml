@@ -8,7 +8,6 @@ description = "DSP library"
 [dependencies]
 crossbeam = "0.8.4"
 lazy_static = "1.5.0"
-mi-plaits-dsp = { git = "https://github.com/sourcebox/mi-plaits-dsp-rs.git", branch = "master" }
 plotters = "0.3.6"
 rand = "0.8.4"
 rustfft = "=6.2.0"
