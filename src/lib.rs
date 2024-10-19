@@ -25,7 +25,7 @@ pub mod utils;
 // Callback type definition
 type PlaybackProgressCallback = extern "C" fn(f32);
 
-type NotePlayedCallback = extern "C" fn(bool, i8, i8);
+type NotePlayedCallback = extern "C" fn(bool, u8, u8);
 
 lazy_static! {
     static ref CHANNEL: Mutex<(channel::Sender<Message>, channel::Receiver<Message>)> =
@@ -73,10 +73,10 @@ pub extern "C" fn set_play_pause(engine: *mut Engine, is_playing: bool) {
 #[no_mangle]
 pub extern "C" fn add_event(
     beat_time: f32,
-    pitch: i8,
-    velocity: i8,
+    pitch: u8,
+    velocity: u8,
     duration: f32,
-    track: i8,
+    track: u8,
     param1: f32,
     param2: f32,
 ) {
@@ -94,37 +94,24 @@ pub extern "C" fn add_event(
 }
 
 #[no_mangle]
-pub extern "C" fn note_on(
-    engine: *mut Engine,
-    pitch: i8,
-    velocity: i8,
-    track: i8,
-    param1: f32,
-    param2: f32,
-) {
-    let engine = unsafe {
-        assert!(!engine.is_null());
-        &mut *engine
-    };
-    engine.note_on(pitch as u8, velocity as u8, track, param1, param2);
+pub extern "C" fn note_on(_: *mut Engine, _: u8, velocity: u8, track: u8, _: f32, _: f32) {
+    let sender = get_sender();
+    sender.send(Message::NoteOn { track, velocity }).unwrap();
 }
 
 #[no_mangle]
-pub extern "C" fn note_off(engine: *mut Engine, pitch: i8, track: i8) {
-    let engine = unsafe {
-        assert!(!engine.is_null());
-        &mut *engine
-    };
-    engine.note_off(pitch as u8, track);
+pub extern "C" fn note_off(_: *mut Engine, _: u8, _: u8) {
+    // not implemented
+    todo!("not implemented")
 }
 
 #[no_mangle]
-pub extern "C" fn set_sound(engine: *mut Engine, sound: i8, track: i8) {
-    todo!();
+pub extern "C" fn set_sound(_: *mut Engine, _: u8, _: u8) {
+    todo!("not implemented")
 }
 
 #[no_mangle]
-pub extern "C" fn set_parameter(parameter: i8, value: f32, track: i8) {
+pub extern "C" fn set_parameter(parameter: i8, value: f32, track: u8) {
     let sender = get_sender();
     sender
         .send(Message::ParameterChange(parameter, value, track))

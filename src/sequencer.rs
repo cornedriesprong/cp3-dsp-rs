@@ -9,17 +9,18 @@ struct Sequence {
 #[derive(Clone)]
 pub struct Event {
     pub beat_time: f32,
-    pub pitch: i8,
-    pub velocity: i8,
+    pub pitch: u8,
+    pub velocity: u8,
     pub param1: f32,
     pub param2: f32,
-    pub track: i8,
+    pub track: u8,
     pub duration: f32,
 }
 
 pub enum Message {
     Schedule(Event),
-    ParameterChange(i8, f32, i8),
+    ParameterChange(i8, f32, u8),
+    NoteOn { track: u8, velocity: u8 },
     Clear,
 }
 
@@ -27,16 +28,14 @@ pub enum Message {
 pub enum ScheduledEvent {
     NoteOn {
         time: i32,
-        pitch: i8,
-        velocity: i8,
-        track: i8,
-        param1: f32,
-        param2: f32,
+        pitch: u8,
+        velocity: u8,
+        track: u8,
     },
     NoteOff {
         time: i32,
-        pitch: i8,
-        track: i8,
+        pitch: u8,
+        track: u8,
     },
 }
 
@@ -88,8 +87,6 @@ impl Sequencer {
                     pitch: ev.pitch,
                     velocity: ev.velocity,
                     track: ev.track,
-                    param1: ev.param1,
-                    param2: ev.param2,
                 };
                 // TODO: stop already playing notes at same pitch
                 self.scheduled_events.push(note_on);
@@ -100,6 +97,7 @@ impl Sequencer {
                     pitch: ev.pitch,
                     track: ev.track,
                 };
+
                 self.scheduled_events.push(note_off);
             }
         }
@@ -319,14 +317,10 @@ mod tests {
                         pitch,
                         velocity,
                         track,
-                        param1,
-                        param2,
                     } => {
                         assert_eq!(pitch, 60);
                         assert_eq!(velocity, 100);
                         assert_eq!(track, 0);
-                        assert_eq!(param1, 0.0);
-                        assert_eq!(param2, 0.0);
                     }
                     _ => panic!("expected note on"),
                 }
@@ -381,8 +375,6 @@ mod tests {
                             pitch: _,
                             velocity: _,
                             track: _,
-                            param1: _,
-                            param2: _,
                         } => {
                             println!("time: {}", time);
                             assert_eq!(*time, i as i32);

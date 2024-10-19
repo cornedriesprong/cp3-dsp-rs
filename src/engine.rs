@@ -60,8 +60,6 @@ impl Engine {
                             pitch,
                             velocity,
                             track,
-                            param1,
-                            param2,
                         } => {
                             Self::note_played(true, *pitch, *track);
                             self.voices[*track as usize].trigger(*velocity as u8);
@@ -109,19 +107,15 @@ impl Engine {
         }
     }
 
-    pub fn note_on(&mut self, _: u8, velocity: u8, track: i8, _: f32, _: f32) {
-        self.voices[track as usize].trigger(velocity);
-    }
-
-    pub fn note_off(&mut self, _: u8, _: i8) {}
-
-    pub fn set_sound(&mut self, _: i8, _: i8) {}
-
     pub fn get_msgs(&mut self) {
         while let Ok(msg) = self.rx.try_recv() {
             match msg {
                 Message::Schedule(event) => {
                     self.sequencer.add_event(event);
+                }
+                Message::NoteOn { track, velocity } => {
+                    Self::note_played(true, 0, track);
+                    self.voices[track as usize].trigger(velocity as u8);
                 }
                 Message::Clear => {
                     self.sequencer.clear();
@@ -133,7 +127,7 @@ impl Engine {
         }
     }
 
-    fn note_played(note_on: bool, pitch: i8, track: i8) {
+    fn note_played(note_on: bool, pitch: u8, track: u8) {
         if let Some(callback) = *NOTE_CALLBACK.lock().unwrap() {
             callback(note_on, pitch, track);
         }
